@@ -12,11 +12,21 @@ import type { ShiftOverride, ShiftPattern } from "./schema";
  */
 export type RotaDayStatus = "working" | "off" | "unscheduled";
 
+/** One shift within a day — a person can have more than one (a split shift, or an overnight-plus-evening double). */
+export interface RotaShiftSegment {
+  startTime: string;
+  endTime: string;
+}
+
 export interface RotaDay {
   date: string;
   status: RotaDayStatus;
+  /** The earliest shift's start, or the only shift's — kept for simple display. Use `shifts` for the full picture. */
   startTime: string | null;
+  /** The latest shift's end, or the only shift's. */
   endTime: string | null;
+  /** Every shift this person has on this date, sorted by start time. Empty when off or unscheduled. */
+  shifts: RotaShiftSegment[];
   /** Set when a manager's override (not a pattern, not a time-off approval) produced this day. */
   isOverride: boolean;
 }
@@ -35,28 +45,44 @@ export function resolvePersonDay(
 ): RotaDay {
   const override = overrides.find((o) => o.date === date);
   if (override) {
+    const working = override.status === "working";
     return {
       date,
       status: override.status === "off" ? "off" : "working",
-      startTime: override.status === "working" ? override.startTime : null,
-      endTime: override.status === "working" ? override.endTime : null,
+      startTime: working ? override.startTime : null,
+      endTime: working ? override.endTime : null,
+      shifts: working && override.startTime && override.endTime ? [{ startTime: override.startTime, endTime: override.endTime }] : [],
       isOverride: true,
     };
   }
 
   const dow = isoDow(date);
-  const pattern = patterns.find(
-    (p) =>
-      p.isActive !== 0 &&
-      p.dayOfWeek === dow &&
-      p.effectiveFrom <= date &&
-      (!p.effectiveUntil || p.effectiveUntil >= date),
-  );
-  if (pattern) {
-    return { date, status: "working", startTime: pattern.startTime, endTime: pattern.endTime, isOverride: false };
+  // Every matching pattern, not just the first — a person can be down for
+  // more than one shift the same day (a split shift, or an overnight shift
+  // plus a separate evening one).
+  const dayPatterns = patterns
+    .filter(
+      (p) =>
+        p.isActive !== 0 &&
+        p.dayOfWeek === dow &&
+        p.effectiveFrom <= date &&
+        (!p.effectiveUntil || p.effectiveUntil >= date),
+    )
+    .map((p) => ({ startTime: p.startTime, endTime: p.endTime }))
+    .sort((a, b) => a.startTime.localeCompare(b.startTime));
+
+  if (dayPatterns.length > 0) {
+    return {
+      date,
+      status: "working",
+      startTime: dayPatterns[0].startTime,
+      endTime: dayPatterns[dayPatterns.length - 1].endTime,
+      shifts: dayPatterns,
+      isOverride: false,
+    };
   }
 
-  return { date, status: "unscheduled", startTime: null, endTime: null, isOverride: false };
+  return { date, status: "unscheduled", startTime: null, endTime: null, shifts: [], isOverride: false };
 }
 
 /** Every date's resolved day for one person, in order. */

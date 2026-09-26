@@ -25,14 +25,20 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
-import { CalendarDays, Plus, Check, X, Trash2 } from "lucide-react";
+import { CalendarDays, Plus, Check, X, Trash2, Printer } from "lucide-react";
 import { cn } from "@/lib/utils";
+
+interface RotaShiftSegment {
+  startTime: string;
+  endTime: string;
+}
 
 interface RotaDay {
   date: string;
   status: "working" | "off" | "unscheduled";
   startTime: string | null;
   endTime: string | null;
+  shifts: RotaShiftSegment[];
   isOverride: boolean;
 }
 
@@ -75,6 +81,60 @@ const MANAGER_ROLES = new Set(["SUPER_ADMIN", "ADMIN", "MANAGER"]);
 const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const DAYS_AHEAD = 14;
 
+interface TemplateShift {
+  dayOfWeek: number;
+  startTime: string;
+  endTime: string;
+}
+
+interface TemplateRole {
+  role: string;
+  shifts: TemplateShift[];
+}
+
+/**
+ * A 3-person starting pattern the owner sketched out by hand: a driver plus
+ * two workers, covering a 24-hour peak (Fri/Sat) with a lighter midweek.
+ * Loading it creates one recurring pattern per shift, mapped onto whichever
+ * three roster members the manager picks in the dialog — it never assumes
+ * who "Driver" or "Worker A" actually is.
+ */
+const STARTING_TEMPLATE: TemplateRole[] = [
+  {
+    role: "Driver",
+    shifts: [
+      { dayOfWeek: 1, startTime: "12:00", endTime: "20:00" },
+      { dayOfWeek: 2, startTime: "12:00", endTime: "20:00" },
+      { dayOfWeek: 4, startTime: "16:00", endTime: "00:00" },
+      { dayOfWeek: 5, startTime: "16:00", endTime: "00:00" },
+      { dayOfWeek: 6, startTime: "16:00", endTime: "00:00" },
+    ],
+  },
+  {
+    role: "Worker A",
+    shifts: [
+      { dayOfWeek: 3, startTime: "12:00", endTime: "20:00" },
+      { dayOfWeek: 4, startTime: "16:00", endTime: "00:00" },
+      { dayOfWeek: 5, startTime: "00:00", endTime: "08:00" },
+      { dayOfWeek: 5, startTime: "16:00", endTime: "00:00" },
+      { dayOfWeek: 6, startTime: "00:00", endTime: "08:00" },
+      { dayOfWeek: 0, startTime: "00:00", endTime: "08:00" },
+    ],
+  },
+  {
+    role: "Worker B",
+    shifts: [
+      { dayOfWeek: 1, startTime: "12:00", endTime: "20:00" },
+      { dayOfWeek: 2, startTime: "12:00", endTime: "20:00" },
+      { dayOfWeek: 3, startTime: "12:00", endTime: "20:00" },
+      { dayOfWeek: 4, startTime: "16:00", endTime: "00:00" },
+      { dayOfWeek: 5, startTime: "08:00", endTime: "16:00" },
+      { dayOfWeek: 6, startTime: "08:00", endTime: "16:00" },
+      { dayOfWeek: 0, startTime: "08:00", endTime: "14:00" },
+    ],
+  },
+];
+
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
 }
@@ -107,6 +167,7 @@ export default function RotaPage() {
   const [cellDialog, setCellDialog] = useState<{ userId: string; userName: string; date: string; day: RotaDay } | null>(null);
   const [patternDialogOpen, setPatternDialogOpen] = useState(false);
   const [timeOffDialogOpen, setTimeOffDialogOpen] = useState(false);
+  const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
 
   const gridQuery = useQuery<RotaGrid>({
     queryKey: ["/api/rota", "grid", from, DAYS_AHEAD],
@@ -153,6 +214,31 @@ export default function RotaPage() {
     onError: (error: Error) => toast({ title: "Couldn't save that pattern", description: error.message, variant: "destructive" }),
   });
 
+  const templateMutation = useMutation({
+    mutationFn: async (assignments: Record<string, string>) => {
+      for (const role of STARTING_TEMPLATE) {
+        const userId = assignments[role.role];
+        if (!userId) continue;
+        for (const shift of role.shifts) {
+          await apiRequest("POST", "/api/rota/patterns", {
+            userId,
+            dayOfWeek: shift.dayOfWeek,
+            startTime: shift.startTime,
+            endTime: shift.endTime,
+            effectiveFrom: todayIso(),
+          });
+        }
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/rota"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/rota/patterns"] });
+      setTemplateDialogOpen(false);
+      toast({ title: "Starting template loaded" });
+    },
+    onError: (error: Error) => toast({ title: "Couldn't load the template", description: error.message, variant: "destructive" }),
+  });
+
   const deletePatternMutation = useMutation({
     mutationFn: (id: string) => apiRequest("DELETE", `/api/rota/patterns/${id}`),
     onSuccess: () => {
@@ -194,9 +280,20 @@ export default function RotaPage() {
 
   const grid = gridQuery.data;
   const pendingRequests = useMemo(() => (timeOffQuery.data ?? []).filter((r) => r.status === "pending"), [timeOffQuery.data]);
+  const handlePrintRota = () => window.print();
 
   return (
     <div className="p-6">
+      {/* Printing (Print / PDF, or the browser's own "Save as PDF" / share sheet)
+          shows only #rota-print-area — everything else on the page, nav included,
+          is hidden for that one print. */}
+      <style>{`
+        @media print {
+          body * { visibility: hidden; }
+          #rota-print-area, #rota-print-area * { visibility: visible; }
+          #rota-print-area { position: absolute; top: 0; left: 0; width: 100%; }
+        }
+      `}</style>
       <PageHeader
         title="Rota"
         icon={CalendarDays}
@@ -215,10 +312,18 @@ export default function RotaPage() {
               <Plus className="mr-1.5 h-4 w-4" /> Request time off
             </Button>
             {isManager ? (
-              <Button onClick={() => setPatternDialogOpen(true)} data-testid="button-add-pattern">
-                <Plus className="mr-1.5 h-4 w-4" /> Add recurring pattern
-              </Button>
+              <>
+                <Button variant="outline" onClick={() => setTemplateDialogOpen(true)} data-testid="button-load-template">
+                  Load starting template
+                </Button>
+                <Button onClick={() => setPatternDialogOpen(true)} data-testid="button-add-pattern">
+                  <Plus className="mr-1.5 h-4 w-4" /> Add recurring pattern
+                </Button>
+              </>
             ) : null}
+            <Button variant="outline" onClick={handlePrintRota} data-testid="button-print-rota">
+              <Printer className="mr-1.5 h-4 w-4" /> Print / PDF
+            </Button>
           </div>
         }
       />
@@ -265,7 +370,15 @@ export default function RotaPage() {
         </Card>
       ) : null}
 
-      <Card>
+      <Card id="rota-print-area">
+        <div className="hidden p-4 pb-0 print:block">
+          <h2 className="text-lg font-semibold">Rota</h2>
+          {grid ? (
+            <p className="text-sm text-metal-muted">
+              {shortDate(grid.dates[0])} – {shortDate(grid.dates[grid.dates.length - 1])}
+            </p>
+          ) : null}
+        </div>
         <CardContent className="overflow-x-auto p-0">
           {gridQuery.isLoading ? (
             <div className="p-6 text-sm text-metal-muted">Loading the rota…</div>
@@ -313,7 +426,21 @@ export default function RotaPage() {
                           )}
                           data-testid={`cell-rota-${person.userId}-${day.date}`}
                         >
-                          {day.status === "working" ? `${day.startTime}–${day.endTime}` : day.status === "off" ? "Off" : "—"}
+                          {day.status === "working" ? (
+                            day.shifts.length > 1 ? (
+                              <span className="flex flex-col gap-0.5">
+                                {day.shifts.map((s, i) => (
+                                  <span key={i}>{s.startTime}–{s.endTime}</span>
+                                ))}
+                              </span>
+                            ) : (
+                              `${day.startTime}–${day.endTime}`
+                            )
+                          ) : day.status === "off" ? (
+                            "Off"
+                          ) : (
+                            "—"
+                          )}
                         </button>
                       </td>
                     ))}
@@ -378,6 +505,17 @@ export default function RotaPage() {
             people={grid?.people ?? []}
             onSubmit={(payload) => patternMutation.mutate(payload)}
             isPending={patternMutation.isPending}
+          />
+        </DialogContent>
+      </Dialog>
+
+      {/* Load starting template dialog (manager+) */}
+      <Dialog open={templateDialogOpen} onOpenChange={setTemplateDialogOpen}>
+        <DialogContent>
+          <TemplateForm
+            people={grid?.people ?? []}
+            onSubmit={(assignments) => templateMutation.mutate(assignments)}
+            isPending={templateMutation.isPending}
           />
         </DialogContent>
       </Dialog>
@@ -550,6 +688,60 @@ function PatternForm({
           data-testid="button-save-pattern"
         >
           Save pattern
+        </Button>
+      </DialogFooter>
+    </>
+  );
+}
+
+function TemplateForm({
+  people,
+  onSubmit,
+  isPending,
+}: {
+  people: RotaGridPerson[];
+  onSubmit: (assignments: Record<string, string>) => void;
+  isPending: boolean;
+}) {
+  const [assignments, setAssignments] = useState<Record<string, string>>({});
+  const totalShifts = STARTING_TEMPLATE.reduce((sum, role) => sum + role.shifts.length, 0);
+  const assignedCount = STARTING_TEMPLATE.filter((role) => assignments[role.role]).length;
+
+  return (
+    <>
+      <DialogHeader>
+        <DialogTitle>Load starting template</DialogTitle>
+        <DialogDescription>
+          A driver plus two workers, covering a light midweek and a 24-hour peak Friday/Saturday. Pick who plays each
+          role — it adds {totalShifts} recurring shifts (starting today), on top of whatever's already there.
+        </DialogDescription>
+      </DialogHeader>
+      <div className="flex flex-col gap-3">
+        {STARTING_TEMPLATE.map((role) => (
+          <div key={role.role}>
+            <Label>{role.role}</Label>
+            <Select value={assignments[role.role] ?? ""} onValueChange={(v) => setAssignments((a) => ({ ...a, [role.role]: v }))}>
+              <SelectTrigger data-testid={`select-template-${role.role.replace(/\s+/g, "-").toLowerCase()}`}>
+                <SelectValue placeholder="Choose a staff member" />
+              </SelectTrigger>
+              <SelectContent>
+                {people.map((p) => (
+                  <SelectItem key={p.userId} value={p.userId}>
+                    {p.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        ))}
+      </div>
+      <DialogFooter>
+        <Button
+          disabled={isPending || assignedCount === 0}
+          onClick={() => onSubmit(assignments)}
+          data-testid="button-save-template"
+        >
+          Load template
         </Button>
       </DialogFooter>
     </>

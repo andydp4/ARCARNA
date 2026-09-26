@@ -13,6 +13,7 @@ describe("resolvePersonDay", () => {
       status: "working",
       startTime: "09:00",
       endTime: "17:00",
+      shifts: [{ startTime: "09:00", endTime: "17:00" }],
       isOverride: false,
     });
   });
@@ -23,20 +24,28 @@ describe("resolvePersonDay", () => {
       status: "unscheduled",
       startTime: null,
       endTime: null,
+      shifts: [],
       isOverride: false,
     });
   });
 
   it("an off override always wins over a matching pattern", () => {
     const result = resolvePersonDay("2026-09-28", pattern(), [{ date: "2026-09-28", status: "off", startTime: null, endTime: null }]);
-    expect(result).toEqual({ date: "2026-09-28", status: "off", startTime: null, endTime: null, isOverride: true });
+    expect(result).toEqual({ date: "2026-09-28", status: "off", startTime: null, endTime: null, shifts: [], isOverride: true });
   });
 
   it("a working override (a swap) replaces the pattern's hours", () => {
     const result = resolvePersonDay("2026-09-28", pattern(), [
       { date: "2026-09-28", status: "working", startTime: "12:00", endTime: "20:00" },
     ]);
-    expect(result).toEqual({ date: "2026-09-28", status: "working", startTime: "12:00", endTime: "20:00", isOverride: true });
+    expect(result).toEqual({
+      date: "2026-09-28",
+      status: "working",
+      startTime: "12:00",
+      endTime: "20:00",
+      shifts: [{ startTime: "12:00", endTime: "20:00" }],
+      isOverride: true,
+    });
   });
 
   it("a pattern outside its effective range does not apply", () => {
@@ -51,6 +60,25 @@ describe("resolvePersonDay", () => {
   it("wrong day-of-week does not match", () => {
     // 2026-09-29 is a Tuesday; the pattern is for Monday (1).
     expect(resolvePersonDay("2026-09-29", pattern(), []).status).toBe("unscheduled");
+  });
+
+  it("combines more than one pattern the same day into separate shifts, sorted by start time", () => {
+    const patterns = [
+      { dayOfWeek: 1, startTime: "16:00", endTime: "00:00", effectiveFrom: "2026-01-01", effectiveUntil: null, isActive: 1 },
+      { dayOfWeek: 1, startTime: "00:00", endTime: "08:00", effectiveFrom: "2026-01-01", effectiveUntil: null, isActive: 1 },
+    ];
+    const result = resolvePersonDay("2026-09-28", patterns, []);
+    expect(result).toEqual({
+      date: "2026-09-28",
+      status: "working",
+      startTime: "00:00",
+      endTime: "00:00",
+      shifts: [
+        { startTime: "00:00", endTime: "08:00" },
+        { startTime: "16:00", endTime: "00:00" },
+      ],
+      isOverride: false,
+    });
   });
 });
 
@@ -71,9 +99,9 @@ describe("forwardDates", () => {
 describe("headcountFor", () => {
   it("counts only people working on that date's index", () => {
     const rotaByUser = new Map([
-      ["u1", [{ date: "d", status: "working", startTime: null, endTime: null, isOverride: false }] as const],
-      ["u2", [{ date: "d", status: "off", startTime: null, endTime: null, isOverride: false }] as const],
-      ["u3", [{ date: "d", status: "working", startTime: null, endTime: null, isOverride: false }] as const],
+      ["u1", [{ date: "d", status: "working", startTime: null, endTime: null, shifts: [], isOverride: false }] as const],
+      ["u2", [{ date: "d", status: "off", startTime: null, endTime: null, shifts: [], isOverride: false }] as const],
+      ["u3", [{ date: "d", status: "working", startTime: null, endTime: null, shifts: [], isOverride: false }] as const],
     ]);
     expect(headcountFor("d", rotaByUser as any, 0)).toBe(2);
   });
