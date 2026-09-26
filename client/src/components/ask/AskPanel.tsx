@@ -1,13 +1,17 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useLocation } from "wouter";
 import { Link } from "wouter";
-import { FileBarChart, Loader2, MessageCircleQuestion, Send, Square } from "lucide-react";
+import { FileBarChart, Loader2, Mic, MicOff, MessageCircleQuestion, Send, Square } from "lucide-react";
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
+import { useToast } from "@/hooks/use-toast";
 import { AskError, OPEN_ASK_EVENT, openAskPanel, streamAsk } from "@/lib/ask";
+import { getSpeechProvider } from "@/lib/speech";
+import { stashWhatsappDraft } from "@/lib/whatsappDraft";
 import { isAtLeast } from "@shared/accessPolicy";
 import {
   ASK_ANSWER_NOTE,
@@ -16,6 +20,7 @@ import {
   type AskEvidenceLink,
   type AskOutcome,
   type AskStatus,
+  type AskTillDraft,
   type AskTurn,
 } from "@shared/ask";
 
@@ -78,13 +83,34 @@ function historyOf(exchanges: Exchange[]): AskTurn[] {
  */
 export function AskPanel() {
   const { data: status } = useAskStatus();
+  const { toast } = useToast();
+  const [, navigate] = useLocation();
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState("");
   const [exchanges, setExchanges] = useState<Exchange[]>([]);
+  const [listening, setListening] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const nextId = useRef(1);
   const endRef = useRef<HTMLDivElement | null>(null);
   const busy = exchanges.some((e) => e.pending);
+  const speech = getSpeechProvider();
+
+  const openTillDraft = useCallback(
+    (tillDraft: AskTillDraft) => {
+      stashWhatsappDraft({
+        conversationId: "",
+        source: "voice",
+        customerId: tillDraft.customerId,
+        customerName: tillDraft.customerName,
+        note: tillDraft.note,
+        items: tillDraft.items,
+      });
+      setOpen(false);
+      navigate("/create-order");
+      if (speech.isSupported()) speech.speak("Opening it in the till.").catch(() => {});
+    },
+    [navigate, speech],
+  );
 
   const update = useCallback((id: number, change: (e: Exchange) => Exchange) => {
     setExchanges((list) => list.map((e) => (e.id === id ? change(e) : e)));
@@ -121,6 +147,9 @@ export function AskPanel() {
               case "discard":
                 update(id, (e) => ({ ...e, answer: "" }));
                 break;
+              case "till_draft":
+                openTillDraft(event.draft);
+                break;
               case "done":
                 update(id, (e) => ({ ...e, evidence: event.evidence, outcome: event.outcome, pending: false, status: null }));
                 break;
@@ -145,8 +174,29 @@ export function AskPanel() {
         if (abortRef.current === controller) abortRef.current = null;
       }
     },
-    [busy, exchanges, update],
+    [busy, exchanges, update, openTillDraft],
   );
+
+  const handleMic = useCallback(async () => {
+    if (!speech.isSupported()) {
+      toast({ title: "Voice not supported", description: "Your browser doesn't support speech recognition." });
+      return;
+    }
+    if (listening) {
+      speech.stop();
+      setListening(false);
+      return;
+    }
+    setListening(true);
+    try {
+      const transcript = await speech.listen();
+      await ask(transcript);
+    } catch (e: any) {
+      toast({ title: "Couldn't hear that", description: e?.message || "Speech recognition failed." });
+    } finally {
+      setListening(false);
+    }
+  }, [ask, listening, speech, toast]);
 
   useEffect(() => {
     const onOpen = (event: Event) => {
@@ -270,6 +320,19 @@ export function AskPanel() {
             className="min-h-[44px] flex-1 resize-none"
             data-testid="ask-input"
           />
+          {speech.isSupported() && (
+            <Button
+              type="button"
+              variant={listening ? "destructive" : "outline"}
+              className="min-h-[44px]"
+              onClick={handleMic}
+              disabled={busy}
+              aria-label={listening ? "Stop listening" : "Speak to arcarna"}
+              data-testid="ask-mic"
+            >
+              {listening ? <MicOff className="h-4 w-4" aria-hidden /> : <Mic className="h-4 w-4" aria-hidden />}
+            </Button>
+          )}
           {busy ? (
             <Button type="button" variant="outline" className="min-h-[44px]" onClick={() => abortRef.current?.abort()} aria-label="Stop">
               <Square className="h-4 w-4" aria-hidden />

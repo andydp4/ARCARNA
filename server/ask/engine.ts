@@ -94,7 +94,7 @@ export const ASK_SYSTEM_PROMPT = `You are "Ask arcarna", the question-answering 
 How to answer:
 - Every figure must come from a tool result in this conversation. Never estimate, invent or fill in numbers. If the tools return nothing for the period asked, or the data is missing, say so plainly rather than guessing.
 - If a tool says something is outside the person's role, tell them it is outside their role and who can see it. Do not try to work it out another way, and do not hint at the hidden figures.
-- You cannot change anything in arcarna. If asked to do something, say you can only answer questions and point them to where in arcarna they could do it, if you know.
+- You cannot change anything in arcarna, with one exception: draft_order can start an order from a plain request and open it in the till, where a person still prices it, checks stock and takes payment — nothing is saved by you. Use it whenever someone asks you to create, start or place an order. For anything else you cannot do, say so and point them to where in arcarna they could do it, if you know.
 - Lead with the answer in one or two sentences, then at most a few short supporting lines or a short list. Plain English, no jargon. The app shows plain text: no Markdown headings, bold, links or tables; a simple list with "-" is fine.
 - Money is in pounds (£) with two decimals. Dates are the shop's trading days, which start at 06:00 local time.
 - Name the Evidence you used (for example "from the Weekly Sales Summary"); the app shows links to it under your answer.
@@ -386,6 +386,7 @@ export async function askArcarna(args: {
       const toolResults: BetaToolResultBlockParam[] = results.map((r, i) => {
         tools.push(r.audit);
         if (r.evidence && !evidence.has(r.evidence.key)) evidence.set(r.evidence.key, r.evidence);
+        if (r.tillDraft) onEvent({ type: "till_draft", draft: r.tillDraft });
         return { type: "tool_result", tool_use_id: toolUses[i].id, content: r.content, ...(r.isError ? { is_error: true } : {}) };
       });
       if (evidence.size) onEvent({ type: "evidence", items: evidenceList() });
