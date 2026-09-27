@@ -25,9 +25,19 @@ export async function runAssistantTurn(
   orgId: string,
   draft: QuickEntryDraft | null | undefined,
   text: string,
+  opts: { customer?: { id: string; name: string } } = {},
 ): Promise<AssistantTurnResult> {
   const products = await getProductsForAssistant(orgId);
   const turn = processQuickEntryTurn(draft, text, products);
+  // A customer already picked by id (Ask arcarna, after "which one?"): used
+  // as-is, whatever name the text carried, so two customers with the same
+  // name, or a name the parser cannot read, can still be ordered for.
+  if (opts.customer && turn.draft && turn.draft.items.length > 0) {
+    return applyCustomerMatches(
+      { ...turn.draft, customerName: opts.customer.name, customerResolved: false, customerCandidates: undefined },
+      [opts.customer],
+    );
+  }
   if (!needsCustomerLookup(turn.draft)) return turn;
   const candidates = await findCustomerCandidatesByName(orgId, turn.draft.customerName ?? "", 5);
   return applyCustomerMatches(
