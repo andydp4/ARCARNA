@@ -193,10 +193,24 @@ export async function upsertOverride(
   return row;
 }
 
+/**
+ * Removes a one-off change so the day falls back to the pattern. A day off
+ * written by an approved time-off request is not removed here — that would
+ * leave the request reading "approved" for a day the person is back on — so
+ * it is refused, and the request is revoked instead.
+ */
 export async function deleteOverride(orgId: string, id: string): Promise<boolean> {
+  const [existing] = await db
+    .select({ timeOffRequestId: shiftOverrides.timeOffRequestId })
+    .from(shiftOverrides)
+    .where(and(eq(shiftOverrides.id, id), eq(shiftOverrides.orgId, orgId)));
+  if (!existing) return false;
+  if (existing.timeOffRequestId) {
+    throw new RotaError("This day off comes from an approved time-off request. Revoke the request instead.", 409);
+  }
   const rows = await db
     .delete(shiftOverrides)
-    .where(and(eq(shiftOverrides.id, id), eq(shiftOverrides.orgId, orgId)))
+    .where(and(eq(shiftOverrides.id, id), eq(shiftOverrides.orgId, orgId), isNull(shiftOverrides.timeOffRequestId)))
     .returning({ id: shiftOverrides.id });
   return rows.length > 0;
 }
@@ -314,6 +328,8 @@ export interface RotaGridPerson {
   userId: string;
   name: string;
   role: string | null;
+  /** Every id this person's rota rows and requests may carry (Clerk subject and legacy id). */
+  aliases: string[];
   days: RotaDay[];
 }
 
@@ -343,7 +359,7 @@ export async function getRotaGrid(orgId: string, from: string, days: number): Pr
       overrides.filter((o) => mine.has(o.userId)),
     );
     rotaByUser.set(person.userId, resolved);
-    return { userId: person.userId, name: person.name, role: person.role, days: resolved };
+    return { userId: person.userId, name: person.name, role: person.role, aliases: person.aliases, days: resolved };
   });
 
   const headcountByDate: Record<string, number> = {};
