@@ -4,7 +4,7 @@
  * refund. The list below is a date-ranged search; picking a row opens its
  * full breakdown.
  */
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { ChevronLeft, ScrollText } from "lucide-react";
@@ -16,20 +16,30 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { getJson } from "@/lib/queryClient";
 import { PERFORMANCE_PRESETS, presetRange, type PerformancePreset } from "@shared/reports/staffPerformance";
-import { PRESET_LABEL, todayIso } from "./order-timing";
+import { PRESET_LABEL } from "./order-timing";
+import { useDefaultTradingDay } from "@/hooks/useDefaultTradingDay";
 
 interface OrderAuditRow {
   id: string;
   shortCode: string;
   createdAt: string;
   status: string;
-  channel: string;
-  fulfilmentMethod: string;
-  paymentMethod: string;
+  channel: string | null;
+  fulfilmentMethod: string | null;
+  paymentMethod: string | null;
   total: number;
   customerName: string | null;
   enteredByName: string | null;
   completedByName: string | null;
+  deletedAt: string | null;
+  deletedByName: string | null;
+}
+
+interface OrderAuditList {
+  period: { from: string; to: string; timezone: string };
+  rows: OrderAuditRow[];
+  truncated: boolean;
+  limit: number;
 }
 
 interface OrderAuditDetail {
@@ -38,9 +48,9 @@ interface OrderAuditDetail {
     createdAt: string;
     settledAt: string | null;
     status: string;
-    channel: string;
-    fulfilmentMethod: string;
-    paymentMethod: string;
+    channel: string | null;
+    fulfilmentMethod: string | null;
+    paymentMethod: string | null;
     total: number;
     settledTotal: number | null;
     subtotal: number | null;
@@ -55,12 +65,14 @@ interface OrderAuditDetail {
     enteredByName: string | null;
     assignedToName: string | null;
     completedByName: string | null;
+    deletedAt: string | null;
+    deletedByName: string | null;
   };
   items: Array<{ productName: string | null; quantity: number; unitPrice: number; totalPrice: number }>;
   payments: Array<{ method: string; amount: number; status: string; paidAt: string | null }>;
   loyalty: Array<{ pointsDelta: number; reason: string; createdAt: string }>;
   refunds: Array<{ id: string; total: number; reason: string; createdAt: string; cashierName: string | null }>;
-  timeline: Array<{ kind: string; at: string; actorName: string | null; station: string | null; meta: unknown }>;
+  timeline: Array<{ kind: string; at: string; actorName: string | null; station: string | null }>;
 }
 
 function money(n: number | null): string {
@@ -68,7 +80,7 @@ function money(n: number | null): string {
 }
 
 function when(iso: string): string {
-  return new Date(iso).toLocaleString("en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
+  return new Date(iso).toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
 const KIND_LABEL: Record<string, string> = {
@@ -92,27 +104,29 @@ const KIND_LABEL: Record<string, string> = {
 };
 
 export default function OrderAuditReport() {
-  const today = useMemo(todayIso, []);
+  // Today's TRADING day in the shop's timezone (before 06:00 it is still yesterday's).
+  const [today] = useDefaultTradingDay();
   const [preset, setPreset] = useState<PerformancePreset | "custom">("today");
-  const initial = presetRange("today", today);
-  const [from, setFrom] = useState(initial.from);
-  const [to, setTo] = useState(initial.to);
+  const [custom, setCustom] = useState<{ from: string; to: string } | null>(null);
   const [openOrderId, setOpenOrderId] = useState<string | null>(null);
+  const range = preset === "custom" && custom ? custom : presetRange(preset === "custom" ? "today" : preset, today);
+  const { from, to } = range;
 
   const choosePreset = (p: string) => {
+    if (p === "custom") setCustom({ from, to });
     setPreset(p as PerformancePreset | "custom");
-    if (p !== "custom") {
-      const r = presetRange(p as PerformancePreset, today);
-      setFrom(r.from);
-      setTo(r.to);
-    }
   };
+  const setFrom = (v: string) => setCustom({ from: v, to });
+  const setTo = (v: string) => setCustom({ from, to: v });
 
-  const params = new URLSearchParams({ startDate: from, endDate: to }).toString();
-  const { data, isLoading } = useQuery<OrderAuditRow[]>({
+  const rangeProblem = !from || !to ? "Pick both dates." : from > to ? "From must be on or before To." : null;
+  const params = new URLSearchParams({ from, to }).toString();
+  const { data, isLoading, isError, error } = useQuery<OrderAuditList>({
     queryKey: ["/api/reports/order-audit", params],
     queryFn: () => getJson(`/api/reports/order-audit?${params}`),
+    enabled: !rangeProblem,
   });
+  const rows = data?.rows ?? [];
 
   const detailQuery = useQuery<OrderAuditDetail>({
     queryKey: ["/api/reports/order-audit", openOrderId],
@@ -163,14 +177,29 @@ export default function OrderAuditReport() {
               />
             </>
           ) : null}
+          <span className="text-xs text-muted-foreground">
+            Trading days {from === to ? from : `${from} to ${to}`} (06:00 to 06:00)
+          </span>
         </CardContent>
       </Card>
 
+      {data?.truncated ? (
+        <p className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm" data-testid="text-order-audit-truncated">
+          Showing the latest {data.limit.toLocaleString("en-GB")} orders only. Pick a shorter range to see every order.
+        </p>
+      ) : null}
+
       <Card>
         <CardContent className="p-0">
-          {isLoading ? (
+          {rangeProblem ? (
+            <div className="p-6 text-sm text-red-500">{rangeProblem}</div>
+          ) : isLoading ? (
             <div className="p-6 text-sm text-muted-foreground">Loading…</div>
-          ) : !data || data.length === 0 ? (
+          ) : isError ? (
+            <div className="p-6 text-sm text-red-500" data-testid="text-order-audit-error">
+              Couldn't load the audit: {(error as Error)?.message ?? "unknown error"}
+            </div>
+          ) : rows.length === 0 ? (
             <div className="p-6 text-sm text-muted-foreground">No orders in this period.</div>
           ) : (
             <Table>
@@ -187,7 +216,7 @@ export default function OrderAuditReport() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {data.map((row) => (
+                {rows.map((row) => (
                   <TableRow
                     key={row.id}
                     className="cursor-pointer"
@@ -199,9 +228,18 @@ export default function OrderAuditReport() {
                     <TableCell>{row.customerName ?? "—"}</TableCell>
                     <TableCell>{row.enteredByName ?? "—"}</TableCell>
                     <TableCell>{row.completedByName ?? "—"}</TableCell>
-                    <TableCell>{row.paymentMethod}</TableCell>
+                    <TableCell>{row.paymentMethod ?? "—"}</TableCell>
                     <TableCell>
-                      <Badge variant="outline">{row.status}</Badge>
+                      {row.deletedAt ? (
+                        <span className="flex flex-col gap-0.5">
+                          <Badge variant="destructive">deleted</Badge>
+                          <span className="text-xs text-muted-foreground">
+                            {when(row.deletedAt)} · {row.deletedByName ?? "System"}
+                          </span>
+                        </span>
+                      ) : (
+                        <Badge variant="outline">{row.status}</Badge>
+                      )}
                     </TableCell>
                     <TableCell className="text-right">{money(row.total)}</TableCell>
                   </TableRow>
@@ -220,7 +258,9 @@ export default function OrderAuditReport() {
           {detailQuery.isLoading ? (
             <p className="text-sm text-muted-foreground">Loading…</p>
           ) : !detailQuery.data ? (
-            <p className="text-sm text-muted-foreground">Couldn't load this order.</p>
+            <p className="text-sm text-red-500">
+              Couldn't load this order{detailQuery.error ? `: ${(detailQuery.error as Error).message}` : "."}
+            </p>
           ) : (
             <OrderAuditDetailView detail={detailQuery.data} />
           )}
@@ -234,6 +274,12 @@ function OrderAuditDetailView({ detail }: { detail: OrderAuditDetail }) {
   const { order, items, payments, loyalty, refunds, timeline } = detail;
   return (
     <div className="space-y-5 text-sm">
+      {order.deletedAt ? (
+        <p className="rounded-md border border-red-500/40 bg-red-500/10 p-2" data-testid="text-order-audit-deleted">
+          Deleted {when(order.deletedAt)} by {order.deletedByName ?? "System"}. Its items, payments and points went with it;
+          the timeline below is what was recorded.
+        </p>
+      ) : null}
       <section className="grid grid-cols-2 gap-2">
         <div>
           <p className="text-xs text-muted-foreground">Customer</p>
@@ -245,7 +291,7 @@ function OrderAuditDetailView({ detail }: { detail: OrderAuditDetail }) {
         </div>
         <div>
           <p className="text-xs text-muted-foreground">Channel / fulfilment</p>
-          <p>{order.channel} / {order.fulfilmentMethod}</p>
+          <p>{order.channel ?? "—"} / {order.fulfilmentMethod ?? "—"}</p>
         </div>
         <div>
           <p className="text-xs text-muted-foreground">Entered by</p>
