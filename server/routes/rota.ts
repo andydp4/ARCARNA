@@ -56,6 +56,7 @@ export function registerRotaRoutes(app: Express, scoped: RequestHandler[]): void
     try {
       const ctx = req.orgContext as { orgId: string };
       const weeks = Math.min(Math.max(parseInt(req.query.weeks as string, 10) || 8, 1), 52);
+      noStore(res);
       res.json({ byDayOfWeek: await rota.getBusyByDayOfWeek(ctx.orgId, weeks), weeks });
     } catch (error) {
       fail(res, error, "load busy-times data");
@@ -108,10 +109,15 @@ export function registerRotaRoutes(app: Express, scoped: RequestHandler[]): void
 
   app.post("/api/rota/overrides", ...scoped, manageRoles, async (req: any, res) => {
     try {
-      const ctx = req.orgContext as { orgId: string };
+      const ctx = req.orgContext as { orgId: string; role: string };
       const parsed = insertShiftOverrideSchema.parse(req.body ?? {});
       const member = await rota.requireRosterMember(ctx.orgId, parsed.userId);
-      res.json(await rota.upsertOverride(ctx.orgId, member.userId, parsed, currentUserId(req)));
+      // A day off for yourself is a time-off request, which someone else decides.
+      const me = currentUserId(req);
+      if (parsed.status === "off" && ctx.role !== "SUPER_ADMIN" && me && member.aliases.includes(me)) {
+        return res.status(403).json({ message: "Request your own time off — someone else decides it." });
+      }
+      res.json(await rota.saveOverride(ctx.orgId, member, parsed, me));
     } catch (error) {
       fail(res, error, "save the shift override");
     }

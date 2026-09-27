@@ -4,7 +4,7 @@
  * for an org, hands them to it, and writes what a manager or cashier changes.
  */
 import { db } from "../db";
-import { and, eq, gte, inArray, isNull, lte, ne, or } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNull, lte, ne, or } from "drizzle-orm";
 import {
   allowedUsers,
   shiftPatterns,
@@ -144,7 +144,11 @@ export async function listOverrides(
   if (opts.userId) conditions.push(eq(shiftOverrides.userId, opts.userId));
   if (opts.from) conditions.push(gte(shiftOverrides.date, opts.from));
   if (opts.to) conditions.push(lte(shiftOverrides.date, opts.to));
-  return db.select().from(shiftOverrides).where(and(...conditions));
+  // Newest first. A person can still hold an old row under their legacy id for
+  // a date that also has a newer one under their sign-in id (written before
+  // the roster was keyed by sign-in id); the resolver takes the first match,
+  // so the most recent decision is the one that shows.
+  return db.select().from(shiftOverrides).where(and(...conditions)).orderBy(desc(shiftOverrides.updatedAt));
 }
 
 type Db = typeof db;
@@ -163,6 +167,54 @@ function overrideValues(orgId: string, userId: string, input: InsertShiftOverrid
     timeOffRequestId,
     createdByUserId: createdByUserId ?? undefined,
   };
+}
+
+/** Every id one person's rota rows may carry: their sign-in (Clerk) id and their legacy id. */
+async function aliasesOf(userId: string, client: Db | Tx = db): Promise<string[]> {
+  const rows = await client
+    .select({ authUserId: allowedUsers.authUserId, replitUserId: allowedUsers.replitUserId })
+    .from(allowedUsers)
+    .where(or(eq(allowedUsers.authUserId, userId), eq(allowedUsers.replitUserId, userId)));
+  return [...new Set([userId, ...rows.flatMap((r) => [r.authUserId, r.replitUserId]).filter((v): v is string => !!v)])];
+}
+
+/**
+ * A manager's one-off change for one person on one date, as the rota page
+ * saves it. In one transaction:
+ *   - a day off written by a request that is still approved is not
+ *     overwritten here (the request would still read "approved" for a day the
+ *     person is shown working, and revoking it would then do nothing) — 409,
+ *     revoke the request instead;
+ *   - any row for that date under the person's OTHER id (saved before the
+ *     roster was keyed by sign-in id) is removed, so the new row cannot be
+ *     shadowed by the old one;
+ *   - the row under their sign-in id is written.
+ */
+export async function saveOverride(
+  orgId: string,
+  member: { userId: string; aliases: string[] },
+  input: InsertShiftOverrideInput,
+  createdByUserId: string | null,
+): Promise<ShiftOverride> {
+  return db.transaction(async (tx) => {
+    const existing = await tx
+      .select({ id: shiftOverrides.id, userId: shiftOverrides.userId, timeOffRequestId: shiftOverrides.timeOffRequestId })
+      .from(shiftOverrides)
+      .where(and(eq(shiftOverrides.orgId, orgId), inArray(shiftOverrides.userId, member.aliases), eq(shiftOverrides.date, input.date)));
+    const linked = existing.map((r) => r.timeOffRequestId).filter((v): v is string => !!v);
+    if (linked.length) {
+      const approved = await tx
+        .select({ id: timeOffRequests.id })
+        .from(timeOffRequests)
+        .where(and(eq(timeOffRequests.orgId, orgId), inArray(timeOffRequests.id, linked), eq(timeOffRequests.status, "approved")));
+      if (approved.length) {
+        throw new RotaError("This day off comes from an approved time-off request. Revoke the request to change it.", 409);
+      }
+    }
+    const stale = existing.filter((r) => r.userId !== member.userId).map((r) => r.id);
+    if (stale.length) await tx.delete(shiftOverrides).where(inArray(shiftOverrides.id, stale));
+    return upsertOverride(orgId, member.userId, input, createdByUserId, null, tx);
+  });
 }
 
 /** One row per person per date — a second write for the same day replaces the first. */
@@ -195,9 +247,11 @@ export async function upsertOverride(
 
 /**
  * Removes a one-off change so the day falls back to the pattern. A day off
- * written by an approved time-off request is not removed here — that would
+ * written by a request that is STILL approved is not removed here — that would
  * leave the request reading "approved" for a day the person is back on — so
- * it is refused, and the request is revoked instead.
+ * it is refused, and the request is revoked instead. A row still tagged with a
+ * request that is no longer approved (left over from before decisions were
+ * locked down) can be reset like any other.
  */
 export async function deleteOverride(orgId: string, id: string): Promise<boolean> {
   const [existing] = await db
@@ -206,11 +260,17 @@ export async function deleteOverride(orgId: string, id: string): Promise<boolean
     .where(and(eq(shiftOverrides.id, id), eq(shiftOverrides.orgId, orgId)));
   if (!existing) return false;
   if (existing.timeOffRequestId) {
-    throw new RotaError("This day off comes from an approved time-off request. Revoke the request instead.", 409);
+    const [request] = await db
+      .select({ status: timeOffRequests.status })
+      .from(timeOffRequests)
+      .where(and(eq(timeOffRequests.id, existing.timeOffRequestId), eq(timeOffRequests.orgId, orgId)));
+    if (request?.status === "approved") {
+      throw new RotaError("This day off comes from an approved time-off request. Revoke the request instead.", 409);
+    }
   }
   const rows = await db
     .delete(shiftOverrides)
-    .where(and(eq(shiftOverrides.id, id), eq(shiftOverrides.orgId, orgId), isNull(shiftOverrides.timeOffRequestId)))
+    .where(and(eq(shiftOverrides.id, id), eq(shiftOverrides.orgId, orgId)))
     .returning({ id: shiftOverrides.id });
   return rows.length > 0;
 }
@@ -266,6 +326,11 @@ export async function createTimeOffRequest(
 
 export type TimeOffDecision = "approved" | "declined" | "cancelled" | "revoked";
 
+export type DecidedTimeOffRequest = TimeOffRequest & {
+  /** On approval: dates where a manager's one-off working shift was replaced by the day off. */
+  replacedShifts?: Array<{ date: string; startTime: string | null; endTime: string | null }>;
+};
+
 /**
  * Move a request on, atomically and only from the state it is expected to be in.
  *
@@ -285,7 +350,7 @@ export async function decideTimeOffRequest(
   decision: TimeOffDecision,
   decidedByUserId: string,
   decisionNote?: string,
-): Promise<TimeOffRequest> {
+): Promise<DecidedTimeOffRequest> {
   const from = decision === "revoked" ? "approved" : "pending";
   const to = decision === "revoked" ? "cancelled" : decision;
   return db.transaction(async (tx) => {
@@ -304,8 +369,25 @@ export async function decideTimeOffRequest(
       throw new RotaError(`This request is already ${current.status} — refresh to see its current state.`, 409);
     }
 
+    const aliases = await aliasesOf(row.userId, tx);
+
     if (decision === "approved") {
-      const values = timeOffDates(row.startDate, row.endDate).map((date) =>
+      const dates = timeOffDates(row.startDate, row.endDate);
+      const existing = await tx
+        .select()
+        .from(shiftOverrides)
+        .where(and(eq(shiftOverrides.orgId, orgId), inArray(shiftOverrides.userId, aliases), inArray(shiftOverrides.date, dates)));
+      // A manager's one-off working shift on one of these days is replaced by
+      // the day off; say which, so the approver knows to re-add it if the
+      // approval is ever revoked.
+      const replacedShifts = existing
+        .filter((o) => o.status === "working" && !o.timeOffRequestId)
+        .map((o) => ({ date: o.date, startTime: o.startTime, endTime: o.endTime }))
+        .sort((a, b) => a.date.localeCompare(b.date));
+      // Rows for these days under the person's other id would shadow the new ones.
+      const stale = existing.filter((o) => o.userId !== row.userId).map((o) => o.id);
+      if (stale.length) await tx.delete(shiftOverrides).where(inArray(shiftOverrides.id, stale));
+      const values = dates.map((date) =>
         overrideValues(orgId, row.userId, { userId: row.userId, date, status: "off" }, decidedByUserId, row.id),
       );
       await tx
@@ -315,10 +397,40 @@ export async function decideTimeOffRequest(
           target: [shiftOverrides.orgId, shiftOverrides.userId, shiftOverrides.date],
           set: { status: "off", startTime: null, endTime: null, note: null, timeOffRequestId: row.id, updatedAt: new Date() },
         });
-    } else if (decision === "revoked") {
-      await tx
-        .delete(shiftOverrides)
+      return replacedShifts.length ? { ...row, replacedShifts } : row;
+    }
+
+    if (decision === "revoked") {
+      // A day also covered by another of this person's approved requests
+      // stays off, handed to that request; only the days nothing else covers
+      // go back to the pattern.
+      const others = await tx
+        .select({ id: timeOffRequests.id, startDate: timeOffRequests.startDate, endDate: timeOffRequests.endDate })
+        .from(timeOffRequests)
+        .where(
+          and(
+            eq(timeOffRequests.orgId, orgId),
+            inArray(timeOffRequests.userId, aliases),
+            eq(timeOffRequests.status, "approved"),
+            ne(timeOffRequests.id, row.id),
+            lte(timeOffRequests.startDate, row.endDate),
+            gte(timeOffRequests.endDate, row.startDate),
+          ),
+        );
+      const days = await tx
+        .select({ id: shiftOverrides.id, date: shiftOverrides.date })
+        .from(shiftOverrides)
         .where(and(eq(shiftOverrides.orgId, orgId), eq(shiftOverrides.timeOffRequestId, row.id)));
+      const drop: string[] = [];
+      for (const day of days) {
+        const cover = others.find((o) => o.startDate <= day.date && o.endDate >= day.date);
+        if (cover) {
+          await tx.update(shiftOverrides).set({ timeOffRequestId: cover.id, updatedAt: new Date() }).where(eq(shiftOverrides.id, day.id));
+        } else {
+          drop.push(day.id);
+        }
+      }
+      if (drop.length) await tx.delete(shiftOverrides).where(inArray(shiftOverrides.id, drop));
     }
     return row;
   });

@@ -354,10 +354,13 @@ export default function RotaPage() {
   });
 
   const decideMutation = useMutation({
-    mutationFn: ({ id, decision }: { id: string; decision: "approved" | "declined" | "revoked" }) =>
-      apiRequest("POST", `/api/rota/time-off/${id}/decide`, { decision }),
-    onSuccess: (_data, { decision }) => {
+    mutationFn: async ({ id, decision }: { id: string; decision: "approved" | "declined" | "revoked" }) =>
+      (await apiRequest("POST", `/api/rota/time-off/${id}/decide`, { decision })).json() as Promise<{
+        replacedShifts?: Array<{ date: string; startTime: string | null; endTime: string | null }>;
+      }>,
+    onSuccess: (data, { decision }) => {
       refreshRota();
+      const replaced = data?.replacedShifts ?? [];
       toast({
         title:
           decision === "approved"
@@ -365,6 +368,13 @@ export default function RotaPage() {
             : decision === "revoked"
               ? "Approval revoked — those days are back to the usual pattern"
               : "Declined",
+        // An approval replaces any one-off shift on those days; revoking it
+        // later does not bring that shift back, so say which ones went.
+        description: replaced.length
+          ? `It replaced ${replaced.length === 1 ? "a one-off shift" : `${replaced.length} one-off shifts`}: ${replaced
+              .map((r) => `${longDate(r.date)}${r.startTime ? ` ${r.startTime}–${r.endTime}` : ""}`)
+              .join("; ")}.`
+          : undefined,
       });
     },
     onError: failed("Couldn't decide that request"),

@@ -245,4 +245,59 @@ describe.skipIf(!hasDb)("Rota (database)", () => {
     const selfApproved = await as("SUPER_ADMIN", OWNER).post(`/api/rota/time-off/${ownerRequest.body.id}/decide`, { decision: "approved" });
     expect(selfApproved.status).toBe(200);
   });
+  it("a legacy-id override for a date is replaced, not shadowed, by a new write", async () => {
+    const date = "2030-06-03";
+    await db.insert(s.shiftOverrides).values({ orgId, userId: CASHIER_LEGACY, date, status: "working", startTime: "16:00", endTime: "23:00" });
+    const saved = await manager().post("/api/rota/overrides", { userId: CASHIER_CLERK, date, status: "off" });
+    expect(saved.status).toBe(200);
+    const { and, eq } = await import("drizzle-orm");
+    const rows = await db.select().from(s.shiftOverrides).where(and(eq(s.shiftOverrides.orgId, orgId), eq(s.shiftOverrides.date, date)));
+    expect(rows.map((r: any) => r.userId)).toEqual([CASHIER_CLERK]);
+    const grid = await manager().get(`/api/rota?from=${date}&days=1`);
+    expect(grid.body.people.find((p: any) => p.userId === CASHIER_CLERK).days[0].status).toBe("off");
+  });
+
+  it("will not let a cell edit overwrite an approved day off, nor a manager give themselves a day off", async () => {
+    const created = await cashier().post("/api/rota/time-off", { startDate: "2030-07-01", endDate: "2030-07-01" });
+    expect((await manager().post(`/api/rota/time-off/${created.body.id}/decide`, { decision: "approved" })).status).toBe(200);
+    const clobber = await manager().post("/api/rota/overrides", { userId: CASHIER_CLERK, date: "2030-07-01", status: "working", startTime: "09:00", endTime: "17:00" });
+    expect(clobber.status).toBe(409);
+
+    const selfOff = await manager().post("/api/rota/overrides", { userId: MANAGER, date: "2030-07-02", status: "off" });
+    expect(selfOff.status).toBe(403);
+    const selfWorking = await manager().post("/api/rota/overrides", { userId: MANAGER, date: "2030-07-02", status: "working", startTime: "10:00", endTime: "14:00" });
+    expect(selfWorking.status).toBe(200);
+  });
+
+  it("says which one-off shifts an approval replaced", async () => {
+    await manager().post("/api/rota/overrides", { userId: CASHIER_CLERK, date: "2030-08-05", status: "working", startTime: "10:00", endTime: "18:00" });
+    const created = await cashier().post("/api/rota/time-off", { startDate: "2030-08-05", endDate: "2030-08-06" });
+    const approved = await manager().post(`/api/rota/time-off/${created.body.id}/decide`, { decision: "approved" });
+    expect(approved.status).toBe(200);
+    expect(approved.body.replacedShifts).toEqual([{ date: "2030-08-05", startTime: "10:00", endTime: "18:00" }]);
+  });
+
+  it("revoking one of two overlapping approvals keeps the shared day off", async () => {
+    const a = await cashier().post("/api/rota/time-off", { startDate: "2030-09-02", endDate: "2030-09-04" });
+    const b = await cashier().post("/api/rota/time-off", { startDate: "2030-09-04", endDate: "2030-09-06" });
+    await manager().post(`/api/rota/time-off/${a.body.id}/decide`, { decision: "approved" });
+    await manager().post(`/api/rota/time-off/${b.body.id}/decide`, { decision: "approved" });
+    expect((await manager().post(`/api/rota/time-off/${b.body.id}/decide`, { decision: "revoked" })).status).toBe(200);
+    const grid = await manager().get("/api/rota?from=2030-09-02&days=5");
+    const days = grid.body.people.find((p: any) => p.userId === CASHIER_CLERK).days.map((d: any) => d.status);
+    expect(days.slice(0, 3)).toEqual(["off", "off", "off"]); // A: 2nd–4th, the 4th still off
+    expect(days.slice(3)).not.toContain("off"); // B's own days are back
+  });
+
+  it("lets a day tagged with a request that is no longer approved be reset", async () => {
+    const [req] = await db
+      .insert(s.timeOffRequests)
+      .values({ orgId, userId: CASHIER_CLERK, startDate: "2030-10-01", endDate: "2030-10-01", status: "declined" })
+      .returning();
+    const [row] = await db
+      .insert(s.shiftOverrides)
+      .values({ orgId, userId: CASHIER_CLERK, date: "2030-10-01", status: "off", timeOffRequestId: req.id })
+      .returning();
+    expect((await manager().delete(`/api/rota/overrides/${row.id}`)).status).toBe(204);
+  });
 });
