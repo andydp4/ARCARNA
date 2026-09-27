@@ -1,24 +1,37 @@
 /**
  * The shift rota: a 14-day-forward grid built from recurring weekly patterns
- * plus one-off overrides, day-off requests (which resolve to "off" overrides
- * once approved), and a busy-times overlay so a manager can see, at a
- * glance, whether a quiet Tuesday needs three people on or one.
+ * plus one-off overrides, day-off requests (which become "off" overrides once
+ * approved), and a busy-times overlay.
  *
- * View is open to any signed-in staff member (everyone benefits from seeing
- * who's on); editing patterns/overrides and deciding time-off is manager+.
- * A cashier may only request their own time off and cancel their own
- * pending request.
+ * Viewing is open to every member of staff. Editing patterns and overrides,
+ * and deciding time off, is manager and above — and nobody but the owner
+ * decides their own request (the same rule as confirming commission). A
+ * cashier requests, and may cancel, only their own time off.
  */
-import type { Express } from "express";
-import type { RequestHandler } from "express";
+import type { Express, RequestHandler, Response } from "express";
 import { requireRole } from "../auth";
 import { insertShiftPatternSchema, insertShiftOverrideSchema, insertTimeOffRequestSchema } from "@shared/schema";
+import { localCalendarDate } from "@shared/time/tradingDay";
+import { orgTimeZone } from "../services/tradingDayShift";
 import * as rota from "../services/rotaService";
 
-const manageRoles = requireRole("SUPER_ADMIN", "ADMIN", "MANAGER");
+const MANAGER_ROLES = ["SUPER_ADMIN", "ADMIN", "MANAGER"];
+const manageRoles = requireRole(...MANAGER_ROLES);
 
 function currentUserId(req: any): string | null {
   return req.user?.id ?? null;
+}
+
+/** Staff names and who is off when: never kept by a browser, a proxy or the service worker. */
+function noStore(res: Response) {
+  res.setHeader("Cache-Control", "no-store, private");
+}
+
+function fail(res: Response, error: any, what: string) {
+  if (error instanceof rota.RotaError) return res.status(error.status).json({ message: error.message });
+  if (error?.name === "ZodError") return res.status(400).json({ message: "Validation error", details: error.errors });
+  console.error(`[rota] ${what}:`, error);
+  return res.status(500).json({ message: `Failed to ${what}` });
 }
 
 export function registerRotaRoutes(app: Express, scoped: RequestHandler[]): void {
@@ -26,12 +39,16 @@ export function registerRotaRoutes(app: Express, scoped: RequestHandler[]): void
     try {
       const ctx = req.orgContext as { orgId: string };
       const days = Math.min(Math.max(parseInt(req.query.days as string, 10) || 14, 1), 42);
-      const from = typeof req.query.from === "string" && /^\d{4}-\d{2}-\d{2}$/.test(req.query.from) ? req.query.from : new Date().toISOString().slice(0, 10);
-      const grid = await rota.getRotaGrid(ctx.orgId, from, days);
-      res.json(grid);
+      // The shop's own date, not the server's UTC one: between midnight and
+      // 01:00 in summer the UTC date is still yesterday.
+      const from =
+        typeof req.query.from === "string" && /^\d{4}-\d{2}-\d{2}$/.test(req.query.from)
+          ? req.query.from
+          : localCalendarDate(new Date(), await orgTimeZone(ctx.orgId));
+      noStore(res);
+      res.json(await rota.getRotaGrid(ctx.orgId, from, days));
     } catch (error) {
-      console.error("Error building rota grid:", error);
-      res.status(500).json({ message: "Failed to load the rota" });
+      fail(res, error, "load the rota");
     }
   });
 
@@ -39,11 +56,9 @@ export function registerRotaRoutes(app: Express, scoped: RequestHandler[]): void
     try {
       const ctx = req.orgContext as { orgId: string };
       const weeks = Math.min(Math.max(parseInt(req.query.weeks as string, 10) || 8, 1), 52);
-      const byDayOfWeek = await rota.getBusyByDayOfWeek(ctx.orgId, weeks);
-      res.json({ byDayOfWeek, weeks });
+      res.json({ byDayOfWeek: await rota.getBusyByDayOfWeek(ctx.orgId, weeks), weeks });
     } catch (error) {
-      console.error("Error building busy-times overlay:", error);
-      res.status(500).json({ message: "Failed to load busy-times data" });
+      fail(res, error, "load busy-times data");
     }
   });
 
@@ -51,11 +66,10 @@ export function registerRotaRoutes(app: Express, scoped: RequestHandler[]): void
     try {
       const ctx = req.orgContext as { orgId: string };
       const userId = typeof req.query.userId === "string" ? req.query.userId : undefined;
-      const patterns = await rota.listPatterns(ctx.orgId, userId);
-      res.json(patterns);
+      noStore(res);
+      res.json(await rota.listPatterns(ctx.orgId, userId));
     } catch (error) {
-      console.error("Error fetching shift patterns:", error);
-      res.status(500).json({ message: "Failed to fetch shift patterns" });
+      fail(res, error, "fetch shift patterns");
     }
   });
 
@@ -63,15 +77,10 @@ export function registerRotaRoutes(app: Express, scoped: RequestHandler[]): void
     try {
       const ctx = req.orgContext as { orgId: string };
       const parsed = insertShiftPatternSchema.parse(req.body ?? {});
-      const pattern = await rota.createPattern(ctx.orgId, parsed.userId, parsed, currentUserId(req));
-      res.json(pattern);
-    } catch (error: any) {
-      if (error.name === "ZodError") {
-        res.status(400).json({ message: "Validation error", details: error.errors });
-      } else {
-        console.error("Error creating shift pattern:", error);
-        res.status(500).json({ message: "Failed to create shift pattern" });
-      }
+      const member = await rota.requireRosterMember(ctx.orgId, parsed.userId);
+      res.json(await rota.createPattern(ctx.orgId, member.userId, parsed, currentUserId(req)));
+    } catch (error) {
+      fail(res, error, "create the shift pattern");
     }
   });
 
@@ -80,33 +89,20 @@ export function registerRotaRoutes(app: Express, scoped: RequestHandler[]): void
       const ctx = req.orgContext as { orgId: string };
       const parsed = insertShiftPatternSchema.partial().parse(req.body ?? {});
       const pattern = await rota.updatePattern(ctx.orgId, req.params.id, parsed);
-      if (!pattern) {
-        res.status(404).json({ message: "Shift pattern not found" });
-        return;
-      }
+      if (!pattern) return res.status(404).json({ message: "Shift pattern not found" });
       res.json(pattern);
-    } catch (error: any) {
-      if (error.name === "ZodError") {
-        res.status(400).json({ message: "Validation error", details: error.errors });
-      } else {
-        console.error("Error updating shift pattern:", error);
-        res.status(500).json({ message: "Failed to update shift pattern" });
-      }
+    } catch (error) {
+      fail(res, error, "update the shift pattern");
     }
   });
 
   app.delete("/api/rota/patterns/:id", ...scoped, manageRoles, async (req: any, res) => {
     try {
       const ctx = req.orgContext as { orgId: string };
-      const ok = await rota.deletePattern(ctx.orgId, req.params.id);
-      if (!ok) {
-        res.status(404).json({ message: "Shift pattern not found" });
-        return;
-      }
+      if (!(await rota.deletePattern(ctx.orgId, req.params.id))) return res.status(404).json({ message: "Shift pattern not found" });
       res.status(204).send();
     } catch (error) {
-      console.error("Error deleting shift pattern:", error);
-      res.status(500).json({ message: "Failed to delete shift pattern" });
+      fail(res, error, "delete the shift pattern");
     }
   });
 
@@ -114,133 +110,97 @@ export function registerRotaRoutes(app: Express, scoped: RequestHandler[]): void
     try {
       const ctx = req.orgContext as { orgId: string };
       const parsed = insertShiftOverrideSchema.parse(req.body ?? {});
-      const override = await rota.upsertOverride(ctx.orgId, parsed.userId, parsed, currentUserId(req));
-      res.json(override);
-    } catch (error: any) {
-      if (error.name === "ZodError") {
-        res.status(400).json({ message: "Validation error", details: error.errors });
-      } else {
-        console.error("Error saving shift override:", error);
-        res.status(500).json({ message: "Failed to save shift override" });
-      }
+      const member = await rota.requireRosterMember(ctx.orgId, parsed.userId);
+      res.json(await rota.upsertOverride(ctx.orgId, member.userId, parsed, currentUserId(req)));
+    } catch (error) {
+      fail(res, error, "save the shift override");
     }
   });
 
   app.delete("/api/rota/overrides/:id", ...scoped, manageRoles, async (req: any, res) => {
     try {
       const ctx = req.orgContext as { orgId: string };
-      const ok = await rota.deleteOverride(ctx.orgId, req.params.id);
-      if (!ok) {
-        res.status(404).json({ message: "Override not found" });
-        return;
-      }
+      if (!(await rota.deleteOverride(ctx.orgId, req.params.id))) return res.status(404).json({ message: "Override not found" });
       res.status(204).send();
     } catch (error) {
-      console.error("Error deleting shift override:", error);
-      res.status(500).json({ message: "Failed to delete shift override" });
+      fail(res, error, "delete the shift override");
     }
   });
 
-  // Any signed-in staff member can request their own time off.
+  // Any member of staff can request their own time off.
   app.post("/api/rota/time-off", ...scoped, async (req: any, res) => {
     try {
       const ctx = req.orgContext as { orgId: string };
       const userId = currentUserId(req);
-      if (!userId) {
-        res.status(401).json({ message: "Unauthorized" });
-        return;
-      }
+      if (!userId) return res.status(401).json({ message: "Unauthorized" });
       const parsed = insertTimeOffRequestSchema.parse(req.body ?? {});
-      if (parsed.endDate < parsed.startDate) {
-        res.status(400).json({ message: "End date cannot be before start date" });
-        return;
-      }
-      const request = await rota.createTimeOffRequest(ctx.orgId, userId, parsed);
-      res.json(request);
-    } catch (error: any) {
-      if (error.name === "ZodError") {
-        res.status(400).json({ message: "Validation error", details: error.errors });
-      } else {
-        console.error("Error creating time-off request:", error);
-        res.status(500).json({ message: "Failed to create time-off request" });
-      }
+      res.json(await rota.createTimeOffRequest(ctx.orgId, userId, parsed));
+    } catch (error) {
+      fail(res, error, "create the time-off request");
     }
   });
 
-  // A cashier sees only their own requests; manager+ sees everyone's.
+  // A cashier sees only their own requests; manager and above see everyone's.
   app.get("/api/rota/time-off", ...scoped, async (req: any, res) => {
     try {
       const ctx = req.orgContext as { orgId: string; role: string };
-      const isManager = ["SUPER_ADMIN", "ADMIN", "MANAGER"].includes(ctx.role);
       const userId = currentUserId(req);
       const status = typeof req.query.status === "string" ? req.query.status : undefined;
-      const requests = await rota.listTimeOffRequests(ctx.orgId, {
-        userId: isManager ? (typeof req.query.userId === "string" ? req.query.userId : undefined) : userId ?? undefined,
-        status,
-      });
-      res.json(requests);
+      let userIds: string[] | undefined;
+      if (!MANAGER_ROLES.includes(ctx.role)) {
+        // Both of this person's ids: a request written before Clerk linking may carry the legacy one.
+        const me = userId ? (await rota.getRosterForOrg(ctx.orgId)).find((m) => m.aliases.includes(userId)) : undefined;
+        userIds = me ? me.aliases : userId ? [userId] : [];
+      }
+      noStore(res);
+      res.json(await rota.listTimeOffRequests(ctx.orgId, { userIds, status }));
     } catch (error) {
-      console.error("Error fetching time-off requests:", error);
-      res.status(500).json({ message: "Failed to fetch time-off requests" });
+      fail(res, error, "fetch time-off requests");
     }
   });
 
   app.post("/api/rota/time-off/:id/decide", ...scoped, manageRoles, async (req: any, res) => {
     try {
-      const ctx = req.orgContext as { orgId: string };
+      const ctx = req.orgContext as { orgId: string; role: string };
       const decision = req.body?.decision;
-      if (decision !== "approved" && decision !== "declined") {
-        res.status(400).json({ message: 'decision must be "approved" or "declined"' });
-        return;
+      if (decision !== "approved" && decision !== "declined" && decision !== "revoked") {
+        return res.status(400).json({ message: 'decision must be "approved", "declined" or "revoked"' });
       }
-      const decidedByUserId = currentUserId(req);
-      if (!decidedByUserId) {
-        res.status(401).json({ message: "Unauthorized" });
-        return;
+      const deciderId = currentUserId(req);
+      if (!deciderId) return res.status(401).json({ message: "Unauthorized" });
+      const request = await rota.getTimeOffRequest(ctx.orgId, req.params.id);
+      if (!request) return res.status(404).json({ message: "Time-off request not found" });
+      if (ctx.role !== "SUPER_ADMIN") {
+        const decider = (await rota.getRosterForOrg(ctx.orgId)).find((m) => m.aliases.includes(deciderId));
+        const ownIds = decider ? decider.aliases : [deciderId];
+        if (ownIds.includes(request.userId)) {
+          return res.status(403).json({ message: "You cannot decide your own time-off request. Ask someone else to." });
+        }
       }
       const note = typeof req.body?.note === "string" ? req.body.note.slice(0, 500) : undefined;
-      const request = await rota.decideTimeOffRequest(ctx.orgId, req.params.id, decision, decidedByUserId, note);
-      if (!request) {
-        res.status(404).json({ message: "Time-off request not found" });
-        return;
-      }
-      res.json(request);
+      res.json(await rota.decideTimeOffRequest(ctx.orgId, req.params.id, decision, deciderId, note));
     } catch (error) {
-      console.error("Error deciding time-off request:", error);
-      res.status(500).json({ message: "Failed to decide time-off request" });
+      fail(res, error, "decide the time-off request");
     }
   });
 
-  // The requester can cancel their own still-pending request; manager+ can cancel any.
+  // The requester can cancel their own still-pending request; manager and above can cancel anyone's pending one.
   app.post("/api/rota/time-off/:id/cancel", ...scoped, async (req: any, res) => {
     try {
       const ctx = req.orgContext as { orgId: string; role: string };
-      const isManager = ["SUPER_ADMIN", "ADMIN", "MANAGER"].includes(ctx.role);
       const userId = currentUserId(req);
-      if (!userId) {
-        res.status(401).json({ message: "Unauthorized" });
-        return;
+      if (!userId) return res.status(401).json({ message: "Unauthorized" });
+      const request = await rota.getTimeOffRequest(ctx.orgId, req.params.id);
+      if (!request) return res.status(404).json({ message: "Time-off request not found" });
+      if (!MANAGER_ROLES.includes(ctx.role)) {
+        const me = (await rota.getRosterForOrg(ctx.orgId)).find((m) => m.aliases.includes(userId));
+        if (!(me ? me.aliases : [userId]).includes(request.userId)) {
+          return res.status(403).json({ message: "You can only cancel your own request" });
+        }
       }
-      const existing = (await rota.listTimeOffRequests(ctx.orgId, { userId: isManager ? undefined : userId })).find(
-        (r) => r.id === req.params.id,
-      );
-      if (!existing) {
-        res.status(404).json({ message: "Time-off request not found" });
-        return;
-      }
-      if (!isManager && existing.userId !== userId) {
-        res.status(403).json({ message: "You can only cancel your own request" });
-        return;
-      }
-      if (existing.status !== "pending") {
-        res.status(400).json({ message: "Only a pending request can be cancelled" });
-        return;
-      }
-      const request = await rota.decideTimeOffRequest(ctx.orgId, req.params.id, "cancelled", userId);
-      res.json(request);
+      res.json(await rota.decideTimeOffRequest(ctx.orgId, req.params.id, "cancelled", userId));
     } catch (error) {
-      console.error("Error cancelling time-off request:", error);
-      res.status(500).json({ message: "Failed to cancel time-off request" });
+      fail(res, error, "cancel the time-off request");
     }
   });
 }

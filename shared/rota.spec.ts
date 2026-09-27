@@ -15,6 +15,7 @@ describe("resolvePersonDay", () => {
       endTime: "17:00",
       shifts: [{ startTime: "09:00", endTime: "17:00" }],
       isOverride: false,
+      overrideId: null,
     });
   });
 
@@ -26,12 +27,13 @@ describe("resolvePersonDay", () => {
       endTime: null,
       shifts: [],
       isOverride: false,
+      overrideId: null,
     });
   });
 
   it("an off override always wins over a matching pattern", () => {
     const result = resolvePersonDay("2026-09-28", pattern(), [{ date: "2026-09-28", status: "off", startTime: null, endTime: null }]);
-    expect(result).toEqual({ date: "2026-09-28", status: "off", startTime: null, endTime: null, shifts: [], isOverride: true });
+    expect(result).toEqual({ date: "2026-09-28", status: "off", startTime: null, endTime: null, shifts: [], isOverride: true, overrideId: null });
   });
 
   it("a working override (a swap) replaces the pattern's hours", () => {
@@ -45,6 +47,7 @@ describe("resolvePersonDay", () => {
       endTime: "20:00",
       shifts: [{ startTime: "12:00", endTime: "20:00" }],
       isOverride: true,
+      overrideId: null,
     });
   });
 
@@ -78,6 +81,7 @@ describe("resolvePersonDay", () => {
         { startTime: "16:00", endTime: "00:00" },
       ],
       isOverride: false,
+      overrideId: null,
     });
   });
 });
