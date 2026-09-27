@@ -63,7 +63,7 @@ export function registerOperationsRoutes(app: Express, scoped: RequestHandler[])
         return res.status(400).json({ message: "Operations Centre routes require org context." });
       }
       const { getOpsBoard } = await import("../services/opsBoard");
-      const board = await getOpsBoard(ctx.orgId, req.user?.id ?? null);
+      const board = await getOpsBoard(ctx.orgId, req.user?.id ?? null, { includeCompleted: false });
       res.json({ staff: board.staff, me: board.me });
     } catch (error) {
       console.error("Error loading operations staff:", error);

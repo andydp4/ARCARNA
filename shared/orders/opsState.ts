@@ -16,6 +16,7 @@
  * equally well in the browser, in a server-side report, and inside the
  * worker that sweeps for due-soon and late alerts.
  */
+import { currentTradingDay, tradingDayBounds } from "../time/tradingDay";
 
 /** The ten states a card can be in. First match in this order wins. */
 export const CARD_STATES = [
@@ -270,4 +271,16 @@ export function deriveCardState(
     pastDueWhileHeldOrReady,
     customerHere: state === "ready" ? toDate(order.customerArrivedAt) != null : customerHere,
   };
+}
+
+/**
+ * Whether a completed order was settled before today's trading day began —
+ * a card in the Done tray from yesterday (the tray's window reaches back to
+ * the start of yesterday's trading day). Such a card is for looking back at,
+ * not acting on: Undo, Edit and Delete are not offered on it from the board.
+ */
+export function settledBeforeToday(settledAt: string | Date | null | undefined, timezone: string, now: Date): boolean {
+  if (!settledAt) return false;
+  const dayStart = tradingDayBounds(currentTradingDay(timezone, now), timezone).start;
+  return new Date(settledAt).getTime() < dayStart.getTime();
 }

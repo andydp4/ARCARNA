@@ -403,7 +403,7 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
       const payload = await getOpsBoard(ctx.orgId, req.user?.id ?? null);
       // No customer phone on the board, for anyone (PRV-04); the address
       // only while a delivery is live, below manager (Q8a).
-      res.json(boardPayloadForViewer(payload, (ctx as { role?: string }).role));
+      res.json(boardPayloadForViewer(payload, (ctx as { role?: string }).role, req.user?.id ?? null));
     } catch (error) {
       console.error("Error building the operations board:", error);
       res.status(500).json({ message: "Failed to load the operations board" });

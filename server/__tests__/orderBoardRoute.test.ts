@@ -140,7 +140,7 @@ vi.mock("../db", () => ({
   },
 }));
 
-const { getOpsBoard } = await import("../services/opsBoard");
+const { getOpsBoard, boardPayloadForViewer } = await import("../services/opsBoard");
 const { registerOrderRoutes } = await import("../routes/orders");
 
 type RouteMap = Record<string, RequestHandler[]>;
@@ -259,7 +259,7 @@ describe("getOpsBoard", () => {
     expect(payload.tradingDay).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
 
-  it("builds its predicate from org, status<>completed and a 36-hour settled_at cutoff", async () => {
+  it("builds its predicate from org, status<>completed and the start of yesterday's trading day", async () => {
     const now = new Date("2026-09-12T12:00:00Z");
     await getOpsBoard(ORG_ID, null, { now });
 
@@ -269,8 +269,17 @@ describe("getOpsBoard", () => {
     expect(flat).toContain("status");
     expect(flat).toContain("completed");
     expect(flat).toContain("settled_at");
-    // 36 hours before `now` — the "Done" tray's own window.
-    expect(flat).toContainEqual(new Date(now.getTime() - 36 * 60 * 60_000));
+    // Trading day 2026-09-11 began 06:00 London (BST) = 05:00Z — a fixed
+    // boundary, not a rolling window that eats yesterday's morning by noon.
+    expect(flat).toContainEqual(new Date("2026-09-11T05:00:00Z"));
+  });
+
+  it("with includeCompleted:false, admits no completed order at all", async () => {
+    const now = new Date("2026-09-12T12:00:00Z");
+    await getOpsBoard(ORG_ID, null, { now, includeCompleted: false });
+    const flat = flattenSqlCondition(state.lastOrdersWhereCondition);
+    expect(flat).toContainEqual(now);
+    expect(flat).not.toContainEqual(new Date("2026-09-11T05:00:00Z"));
   });
 
   it("takes summary.completedToday from countCompletedToday, not from filtering the row-limited orders list", async () => {
@@ -363,5 +372,45 @@ describe("getOpsBoard", () => {
     const payload = await getOpsBoard(ORG_ID, "seed-cashier");
 
     expect(payload.orders[0].inputUserName).toBe("Cashier");
+  });
+});
+
+describe("boardPayloadForViewer — the Done tray's yesterday (Q10a)", () => {
+  const today = "2026-09-12T09:00:00Z"; // 10:00 London, trading day 09-12
+  const yesterday = "2026-09-11T20:00:00Z"; // trading day 09-11
+  const card = (id: string, settledAt: string | null, who: Partial<Record<"inputUserId" | "completedUserId" | "assignedUserId", string>> = {}) =>
+    ({
+      id,
+      status: settledAt ? "completed" : "pending",
+      settledAt,
+      inputUserId: "someone-else",
+      completedUserId: "someone-else",
+      assignedUserId: null,
+      fulfilmentMethod: "collection",
+      ...who,
+    }) as any;
+  const payload = () =>
+    ({
+      serverNow: "2026-09-12T11:00:00Z",
+      tradingDay: "2026-09-12",
+      timezone: "Europe/London",
+      orders: [
+        card("open", null),
+        card("done-today-other", today),
+        card("done-yesterday-other", yesterday),
+        card("done-yesterday-mine", yesterday, { completedUserId: "me" }),
+        card("done-yesterday-entered", yesterday, { inputUserId: "me" }),
+      ],
+      alerts: [{ orderId: "done-yesterday-other" }, { orderId: "open" }],
+    }) as any;
+
+  it("shows a cashier today's work and only their own from yesterday", () => {
+    const seen = boardPayloadForViewer(payload(), "CASHIER", "me");
+    expect(seen.orders.map((o) => o.id)).toEqual(["open", "done-today-other", "done-yesterday-mine", "done-yesterday-entered"]);
+    expect(seen.alerts.map((a: any) => a.orderId)).toEqual(["open"]);
+  });
+
+  it("shows a manager everything", () => {
+    expect(boardPayloadForViewer(payload(), "MANAGER", "me").orders).toHaveLength(5);
   });
 });

@@ -24,7 +24,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { roleRank, type Role } from "@shared/rbac";
-import type { DerivedCardState, OpsTimingSettings } from "@shared/orders/opsState";
+import { settledBeforeToday, type DerivedCardState, type OpsTimingSettings } from "@shared/orders/opsState";
 import type { OpsBoardStaffRow } from "@/hooks/useOpsBoard";
 import type { BoardOrder } from "@/lib/orderTypes";
 import { formatTimeOfDay } from "@/lib/opsClock";
@@ -162,7 +162,11 @@ export function OpsCardActions({
   const isCollection = order.fulfilmentMethod === "collection";
   const isCarriedOver = derived.state === "carried-over";
   const isScheduled = derived.state === "scheduled";
-  const canEditOrDelete = role !== "CASHIER";
+  // Yesterday's completed cards are in the Done tray to look back at. Undo,
+  // Edit and Delete there would rewrite a day that is already over, so they
+  // are left to the Orders page, where the closed-day rules are explained.
+  const fromPreviousDay = order.status === "completed" && settledBeforeToday(order.settledAt, settings.timezone, now);
+  const canEditOrDelete = role !== "CASHIER" && !fromPreviousDay;
   const managerPlus = isManagerPlus(role);
   const isAssignee = order.assignedUserId === currentUserId;
   // `assign` to someone else is MANAGER+; a cashier may only pass on an order
@@ -173,7 +177,7 @@ export function OpsCardActions({
   const isCompleter = Boolean(order.completedUserId) && order.completedUserId === currentUserId;
   const withinUndoWindow =
     order.settledAt != null && now.getTime() - new Date(order.settledAt).getTime() <= TEN_MINUTES_MS;
-  const canUndo = order.status === "completed" && (managerPlus || (isCompleter && withinUndoWindow));
+  const canUndo = order.status === "completed" && !fromPreviousDay && (managerPlus || (isCompleter && withinUndoWindow));
   // A completion the brief asks to be honest about: a carried-over order's
   // "now" is not when it was actually handed over, so completing one always
   // asks first rather than silently stamping the tap as the moment.
