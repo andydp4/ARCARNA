@@ -358,6 +358,11 @@ export const shots = [
     name: "v12-09-staff-performance.png", role: "manager", viewport: "desktop", route: "/reports/staff-performance", height: 1400,
     setup: async (page) => { await choose(page, '[data-testid="select-performance-preset"]', "Last 4 weeks"); },
   },
+  { name: "v12-02-rota-grid.png", role: "manager", viewport: "desktop", route: "/rota", height: 1100 },
+  {
+    name: "v12-09-order-audit.png", role: "manager", viewport: "desktop", route: "/reports/order-audit",
+    setup: async (page) => { await page.waitForTimeout(1500); },
+  },
   {
     name: "v12-04-order-timing.png", role: "manager", viewport: "desktop", route: "/reports/order-timing",
     setup: async (page) => { await choose(page, '[data-testid="select-timing-preset"]', "Last 4 weeks"); },

@@ -179,16 +179,18 @@
     <li>Open the menu, choose <span class="ui">Finance Centre</span>, then <span class="ui">Rota</span>.</li>
     <li>The grid runs 14 days forward from the date box at the top. Each row is one person; each column is one day. A cell reads the shift's hours, <span class="ui">Off</span>, or a dash for a day nobody has said anything about yet.</li>
     <li>A day with more than one shift for the same person — a split shift, or an overnight shift plus a separate evening one — shows both, stacked in the cell.</li>
+    <li>A cell with a dashed outline is a one-off change for that date (a cover, a swap or a day off) rather than the usual weekly pattern. Today's column is outlined.</li>
+    <li>The grid starts from the shop's own date, so just after midnight it already shows the new day.</li>
   </ol>
 
   <figure>
     <img src="../images/v12-02-rota-grid.png" alt="The Rota grid: staff down the left, 14 days across the top, cells showing working hours, Off, or unscheduled" />
     <figcaption>The Rota: 14 days forward, one row per person.</figcaption>
-    <!-- SHOT: route=/rota ; role=manager ; viewport=desktop ; show=the page header ("Rota", "Who's on, and who's asked for time off?"), the date box, the grid with a few staff rows showing a mix of working-hours cells, an "Off" cell and a dash, and the day headers with the "N on" count under each date ; state=at least two staff with a recurring pattern set, one approved day off in the next 14 days -->
+    <!-- SHOT: route=/rota ; role=manager ; viewport=desktop ; show=the page header ("Rota", "Who's on, and who's asked for time off?"), the date box, the grid with a few staff rows showing a mix of working-hours cells, an "Off" cell and a dash, and the day headers with the "N on" count under each date ; state=at least two staff with a recurring pattern set, one approved day off in the next 14 days ; buttons=Request time off, Download PDF, Print -->
   </figure>
 
   <h3>Requesting a day off <span class="role role-cashier">CASHIER</span></h3>
-  <p>Select <span class="ui">Request time off</span> at the top of the Rota page, give the dates and, if you like, a reason, then send it. It goes to your manager as pending. You can cancel your own request while it is still pending; once it is decided, you cannot.</p>
+  <p>Select <span class="ui">Request time off</span> at the top of the Rota page, give the dates and, if you like, a reason, then send it. Under the dates the form repeats them back in full, with the year and the number of days (for example <em>Thu, 1 Oct 2026 – Sat, 3 Oct 2026 (3 days)</em>) — check the year before you send. One request can cover up to 62 days; for anything longer, send more than one. It goes to your manager as pending. You can cancel your own request while it is still pending; once it is decided, you cannot.</p>
 
   <div class="ed-manager">
     <h3>Recurring patterns and busy-times overlay <span class="role role-manager">MANAGER</span></h3>
@@ -196,17 +198,26 @@
     <ol class="steps">
       <li>Select <span class="ui">Add recurring pattern</span>, choose the staff member, the day of the week, a start and end time, and the date it starts from. It repeats every week until you remove it or give it an end date.</li>
       <li>To cover a one-off absence or swap a shift, select the cell for that person and date, choose <span class="ui">Working</span> or <span class="ui">Off</span> and, if working, the hours, then save. This never changes the recurring pattern underneath — it just overrides that one date.</li>
-      <li>Pending time-off requests sit in a card at the top of the page. <span class="ui">Approve</span> writes an <span class="ui">Off</span> entry on every date in the request automatically; <span class="ui">Decline</span> leaves the pattern as it was.</li>
+      <li>Pending time-off requests sit in a card at the top of the page, each with its dates, year and number of days. <span class="ui">Approve</span> writes an <span class="ui">Off</span> entry on every date in the request automatically; <span class="ui">Decline</span> leaves the pattern as it was. A request can be decided once: if someone else got there first, you are told so and the list refreshes.</li>
+      <li>Nobody decides their own request. Your own shows <em>Your own request — someone else decides it</em> instead of the buttons; another manager, an admin or the owner decides it.</li>
+      <li>Changed your mind about an approval? Find it under <span class="ui">All time-off requests</span> and select <span class="ui">Revoke</span>. The days off it wrote are removed and those days go back to the usual pattern.</li>
+      <li>To undo a one-off change you made to a cell, open the cell and select <span class="ui">Reset to usual pattern</span>. A day off that came from an approved request cannot be reset from the cell — the cell tells you to revoke the request instead, so the request and the grid never disagree.</li>
+      <li>If a person has two shifts that day, the cell warns you that saving replaces both, for that date only, with the one shift you enter.</li>
     </ol>
     <p>Behind the grid's day headers, a manager or admin sees a faint shading — busier days shade darker, using the shop's own sales-by-hour figures (the same data behind <span class="ui">Busiest Hours</span> in Truths). It is there to help judge whether a quiet Tuesday needs one person on, or a Friday needs three.</p>
     <div class="callout">
       <strong>Starting from nothing? Load a template</strong>
-      If the rota is empty, <span class="ui">Load starting template</span> offers a ready-made pattern — a driver plus two workers, covering a light midweek and a busier Friday/Saturday — and asks which of your own staff plays each role. It adds the recurring shifts for you; you can edit or delete any of them afterwards like any other pattern.
+      If the rota is empty, <span class="ui">Load starting template</span> offers a ready-made pattern — a driver plus two workers, covering a light midweek and a busier Friday/Saturday — and asks which of your own staff plays each role. It adds the recurring shifts for you; you can edit or delete any of them afterwards like any other pattern. Pick a different person for each role — the same person in two roles would be down for overlapping shifts, so the template will not load until you change it. Loading it a second time skips any shift a person already has, so nobody is doubled up.
     </div>
   </div>
 
-  <h3>Printing the rota</h3>
-  <p><span class="ui">Print / PDF</span>, at the top of the page, prints just the grid — no menus, no buttons. Use your browser's own print dialog to print it on paper, or choose <span class="ui">Save as PDF</span> (or your device's equivalent) to keep or share a copy.</p>
+  <h3>Printing, downloading and sharing the rota</h3>
+  <p>Three buttons at the top of the page all produce the same sheet: an A4 landscape page on white paper, with every one of the 14 days across it, the shop's name, and when it was made in the corner (so an old copy on the staff-room wall is easy to spot). A long staff list runs onto a second page with the day headings repeated.</p>
+  <ul>
+    <li><span class="ui">Download PDF</span> saves the sheet as a file named after its first day, for example <em>rota-2026-09-27.pdf</em>.</li>
+    <li><span class="ui">Share</span> hands the PDF to your device's share sheet — WhatsApp, email, AirDrop and so on. It only appears on devices that can share files (most phones and tablets).</li>
+    <li><span class="ui">Print</span> opens the PDF in a new tab, ready for your browser's print button. If your browser blocks the new tab, the PDF downloads instead and a message says so.</li>
+  </ul>
 
   <p class="eyebrow">Operations Centre · My performance</p>
   <h2>My performance</h2>
