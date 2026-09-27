@@ -778,6 +778,31 @@ export function boardOrderForViewer(order: BoardOrderPayload, role: string | nul
   };
 }
 
+type VisibilityFields = {
+  status: string | null;
+  settledAt: string | Date | null;
+  inputUserId: string | null;
+  completedUserId: string | null;
+  assignedUserId: string | null;
+};
+
+/**
+ * Q10a for one board card: below manager, a completed order settled before
+ * today's trading day (`dayStartMs`) is shown only to whoever entered, took or
+ * completed it. The poll, the live stream and the phone search all ask this,
+ * so none of them can show a cashier a card the others would not.
+ */
+export function boardOrderVisibleTo(
+  o: VisibilityFields,
+  role: string | null | undefined,
+  userId: string | null,
+  dayStartMs: number,
+): boolean {
+  if (role && isRole(role) && roleRank(role) >= roleRank("MANAGER")) return true;
+  if (o.status !== "completed" || !o.settledAt || new Date(o.settledAt).getTime() >= dayStartMs) return true;
+  return !!userId && (o.inputUserId === userId || o.completedUserId === userId || o.assignedUserId === userId);
+}
+
 /**
  * The whole board as one viewer may see it. Besides each card's Q8a cut, the
  * Done tray's earlier days follow Q10a: below manager, a completed order from
@@ -789,15 +814,8 @@ export function boardPayloadForViewer(
   role: string | null | undefined,
   userId: string | null = null,
 ): OpsBoardPayload {
-  const managerPlus = !!role && isRole(role) && roleRank(role) >= roleRank("MANAGER");
-  let orders = payload.orders;
-  if (!managerPlus) {
-    const dayStart = tradingDayBounds(payload.tradingDay, payload.timezone).start.getTime();
-    orders = orders.filter((o) => {
-      if (o.status !== "completed" || !o.settledAt || new Date(o.settledAt).getTime() >= dayStart) return true;
-      return !!userId && (o.inputUserId === userId || o.completedUserId === userId || o.assignedUserId === userId);
-    });
-  }
+  const dayStart = tradingDayBounds(payload.tradingDay, payload.timezone).start.getTime();
+  const orders = payload.orders.filter((o) => boardOrderVisibleTo(o, role, userId, dayStart));
   const shown = new Set(orders.map((o) => o.id));
   return {
     ...payload,
@@ -815,13 +833,21 @@ export async function findBoardOrderIdsByPhone(
   orgId: string,
   formattedPhone: string,
   now: Date = new Date(),
+  viewer: { role: string | null | undefined; userId: string | null } | null = null,
 ): Promise<string[]> {
   const { db } = await import("../../apps/server/src/db");
   const { orders, customers } = await import("../../apps/server/src/db/schema");
   const { timezone } = await loadOrgSettings(orgId);
   const cutoff = boardCompletedCutoff(now, timezone);
   const rows = await db
-    .select({ id: orders.id })
+    .select({
+      id: orders.id,
+      status: orders.status,
+      settledAt: orders.settled_at,
+      inputUserId: orders.input_user_id,
+      completedUserId: orders.completed_user_id,
+      assignedUserId: orders.assigned_user_id,
+    })
     .from(orders)
     .innerJoin(customers, eq(orders.customer_id, customers.id))
     .where(
@@ -831,5 +857,7 @@ export async function findBoardOrderIdsByPhone(
         or(ne(orders.status, "completed"), gte(orders.settled_at, cutoff)),
       ),
     );
-  return rows.map((r) => r.id as string);
+  if (!viewer) return rows.map((r) => r.id as string);
+  const dayStart = tradingDayBounds(currentTradingDay(timezone, now), timezone).start.getTime();
+  return rows.filter((r) => boardOrderVisibleTo(r as VisibilityFields, viewer.role, viewer.userId, dayStart)).map((r) => r.id as string);
 }

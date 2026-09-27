@@ -425,7 +425,12 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
       const formatted = formatUkPhone(typeof req.body?.phone === "string" ? req.body.phone : "");
       if (!formatted) return res.json({ orderIds: [] });
       const { findBoardOrderIdsByPhone } = await import("../services/opsBoard");
-      res.json({ orderIds: await findBoardOrderIdsByPhone(ctx.orgId, formatted) });
+      res.json({
+        orderIds: await findBoardOrderIdsByPhone(ctx.orgId, formatted, new Date(), {
+          role: (ctx as { role?: string }).role,
+          userId: req.user?.id ?? null,
+        }),
+      });
     } catch (error) {
       console.error("Error searching the board by phone:", error);
       res.status(500).json({ message: "Failed to search the board" });

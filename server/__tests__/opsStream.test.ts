@@ -276,3 +276,27 @@ describe("org context", () => {
     expect(body?.message).toBeTruthy();
   });
 });
+
+describe("entryForViewer — the Done tray's yesterday (Q10a) on the live stream", () => {
+  const card = (who: Record<string, string | null>) =>
+    ({
+      id: "o1",
+      status: "completed",
+      settledAt: "2026-09-11T20:00:00Z", // trading day 09-11
+      inputUserId: "someone-else",
+      completedUserId: "someone-else",
+      assignedUserId: null,
+      fulfilmentMethod: "collection",
+      ...who,
+    }) as any;
+  const entry = (order: any) => ({ id: 1, event: { type: "order", order } }) as any;
+  const viewer = (userId: string) => ({ userId, timezone: "Europe/London", now: new Date("2026-09-12T11:00:00Z") });
+
+  it("does not push another person's earlier-day card to a cashier", async () => {
+    const { entryForViewer } = await import("../routes/opsStream");
+    expect(entryForViewer(entry(card({})), "CASHIER", viewer("me"))).toBeNull();
+    expect(entryForViewer(entry(card({ completedUserId: "me" })), "CASHIER", viewer("me"))).not.toBeNull();
+    expect(entryForViewer(entry(card({})), "MANAGER", viewer("me"))).not.toBeNull();
+    expect(entryForViewer(entry(card({ settledAt: "2026-09-12T09:00:00Z" })), "CASHIER", viewer("me"))).not.toBeNull();
+  });
+});

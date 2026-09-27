@@ -164,7 +164,7 @@ export function OpsCardActions({
   const isScheduled = derived.state === "scheduled";
   // Yesterday's completed cards are in the Done tray to look back at. Undo,
   // Edit and Delete there would rewrite a day that is already over, so they
-  // are left to the Orders page, where the closed-day rules are explained.
+  // are not offered; a past day's sale is corrected with a refund (Details → Issue refund).
   const fromPreviousDay = order.status === "completed" && settledBeforeToday(order.settledAt, settings.timezone, now);
   const canEditOrDelete = role !== "CASHIER" && !fromPreviousDay;
   const managerPlus = isManagerPlus(role);
