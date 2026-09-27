@@ -79,8 +79,16 @@ function money(n: number | null): string {
   return n == null ? "—" : `£${n.toFixed(2)}`;
 }
 
-function when(iso: string): string {
-  return new Date(iso).toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+/** In the shop's timezone, like the board — not whatever zone the viewing device happens to be set to. */
+function when(iso: string, timeZone?: string): string {
+  return new Date(iso).toLocaleString("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone,
+  });
 }
 
 const KIND_LABEL: Record<string, string> = {
@@ -127,6 +135,7 @@ export default function OrderAuditReport() {
     enabled: !rangeProblem,
   });
   const rows = data?.rows ?? [];
+  const tz = data?.period.timezone;
 
   const detailQuery = useQuery<OrderAuditDetail>({
     queryKey: ["/api/reports/order-audit", openOrderId],
@@ -224,7 +233,7 @@ export default function OrderAuditReport() {
                     data-testid={`row-order-audit-${row.id}`}
                   >
                     <TableCell className="font-mono text-xs">{row.shortCode}</TableCell>
-                    <TableCell>{when(row.createdAt)}</TableCell>
+                    <TableCell>{when(row.createdAt, tz)}</TableCell>
                     <TableCell>{row.customerName ?? "—"}</TableCell>
                     <TableCell>{row.enteredByName ?? "—"}</TableCell>
                     <TableCell>{row.completedByName ?? "—"}</TableCell>
@@ -232,9 +241,9 @@ export default function OrderAuditReport() {
                     <TableCell>
                       {row.deletedAt ? (
                         <span className="flex flex-col gap-0.5">
-                          <Badge variant="destructive">deleted</Badge>
+                          <Badge variant="destructive" className="w-fit">deleted</Badge>
                           <span className="text-xs text-muted-foreground">
-                            {when(row.deletedAt)} · {row.deletedByName ?? "System"}
+                            {when(row.deletedAt, tz)} · {row.deletedByName ?? "System"}
                           </span>
                         </span>
                       ) : (
@@ -262,7 +271,7 @@ export default function OrderAuditReport() {
               Couldn't load this order{detailQuery.error ? `: ${(detailQuery.error as Error).message}` : "."}
             </p>
           ) : (
-            <OrderAuditDetailView detail={detailQuery.data} />
+            <OrderAuditDetailView detail={detailQuery.data} timeZone={tz} />
           )}
         </DialogContent>
       </Dialog>
@@ -270,13 +279,13 @@ export default function OrderAuditReport() {
   );
 }
 
-function OrderAuditDetailView({ detail }: { detail: OrderAuditDetail }) {
+function OrderAuditDetailView({ detail, timeZone }: { detail: OrderAuditDetail; timeZone?: string }) {
   const { order, items, payments, loyalty, refunds, timeline } = detail;
   return (
     <div className="space-y-5 text-sm">
       {order.deletedAt ? (
         <p className="rounded-md border border-red-500/40 bg-red-500/10 p-2" data-testid="text-order-audit-deleted">
-          Deleted {when(order.deletedAt)} by {order.deletedByName ?? "System"}. Its items, payments and points went with it;
+          Deleted {when(order.deletedAt, timeZone)} by {order.deletedByName ?? "System"}. Its items, payments and points went with it;
           the timeline below is what was recorded.
         </p>
       ) : null}
@@ -309,6 +318,7 @@ function OrderAuditDetailView({ detail }: { detail: OrderAuditDetail }) {
 
       <section>
         <p className="mb-1 font-medium">Items</p>
+        {items.length === 0 ? <p className="text-muted-foreground">No items on record.</p> : null}
         <ul className="space-y-1">
           {items.map((i, idx) => (
             <li key={idx} className="flex justify-between">
@@ -403,7 +413,7 @@ function OrderAuditDetailView({ detail }: { detail: OrderAuditDetail }) {
             <li key={idx}>
               <p className="text-sm">{KIND_LABEL[e.kind] ?? e.kind}</p>
               <p className="text-xs text-muted-foreground">
-                {when(e.at)} · {e.actorName ?? "System"}
+                {when(e.at, timeZone)} · {e.actorName ?? "System"}
                 {e.station ? ` · ${e.station}` : ""}
               </p>
             </li>
