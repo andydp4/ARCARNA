@@ -28,6 +28,7 @@ import { opsStaff } from "@shared/schema";
 import { boardOrderForViewer, boardOrderVisibleTo } from "../services/opsBoard";
 import { currentTradingDay, tradingDayBounds } from "@shared/time/tradingDay";
 import { orgTimeZone } from "../services/tradingDayShift";
+import { isRole, roleRank } from "@shared/rbac";
 
 /** One write per org:user per 60s — see the module doc and the brief's presence row. */
 const PRESENCE_THROTTLE_MS = 60_000;
@@ -117,21 +118,34 @@ export function registerOpsStreamRoutes(app: Express, scoped: RequestHandler[]):
     const orgId = ctx.orgId;
     const userId: string | null = req.user?.id ?? null;
     const role: string | null = (req.orgContext as { role?: string } | undefined)?.role ?? null;
-    // Europe/London until the org's own timezone loads (it almost always is).
-    // Loaded only the first time a completed card reaches a viewer the Q10a
-    // rule applies to, so an idle connection still costs no reads.
+    // Q10a needs the org's timezone to tell today's completed cards from an
+    // earlier day's. It is loaded only when the first completed card reaches a
+    // viewer the rule applies to (below manager), so an idle connection still
+    // costs no reads; until it arrives, that viewer's events wait in order
+    // rather than being judged by the wrong day boundary.
+    const managerPlus = !!role && isRole(role) && roleRank(role) >= roleRank("MANAGER");
     const viewer = { userId, timezone: "Europe/London" };
-    let timezoneRequested = false;
+    let timezone: "unknown" | "loading" | "known" = managerPlus ? "known" : "unknown";
+    const waiting: OpsBusEntry[] = [];
     const send = (entry: OpsBusEntry) => {
-      if (!timezoneRequested && entry.event.type === "order" && entry.event.order.status === "completed") {
-        timezoneRequested = true;
-        void orgTimeZone(orgId)
-          .then((tz) => {
-            viewer.timezone = tz;
-          })
-          .catch(() => {});
+      if (timezone === "known") return writeEntry(res, entry, role, viewer);
+      if (timezone === "loading") {
+        waiting.push(entry);
+        return;
       }
-      writeEntry(res, entry, role, viewer);
+      if (entry.event.type !== "order" || entry.event.order.status !== "completed") return writeEntry(res, entry, role, viewer);
+      timezone = "loading";
+      waiting.push(entry);
+      orgTimeZone(orgId)
+        .then((tz) => {
+          viewer.timezone = tz;
+        })
+        .catch(() => {})
+        .finally(() => {
+          timezone = "known";
+          if (res.writableEnded || res.destroyed) return;
+          for (const queued of waiting.splice(0)) writeEntry(res, queued, role, viewer);
+        });
     };
 
     res.setHeader("Content-Type", "text/event-stream");

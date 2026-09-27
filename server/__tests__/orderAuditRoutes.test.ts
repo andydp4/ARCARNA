@@ -188,4 +188,20 @@ describe.skipIf(!hasDb)("Order Audit (database)", () => {
     const dayDeleted = await as("ADMIN", ADMIN)("/api/reports/order-audit?from=2030-06-11&to=2030-06-11");
     expect(dayDeleted.body.rows.map((r: any) => r.id)).not.toContain(late);
   });
+  it("shows a manager a linked cashier's name on orders stored under their legacy id", async () => {
+    const legacy = `audit-legacy-${suffix}`;
+    const clerk = `user_audit_${suffix}`;
+    await db.insert(s.allowedUsers).values({ replitUserId: legacy, authUserId: clerk, name: "Lee Legacy", role: "CASHIER", orgId });
+    try {
+      const [o] = await db
+        .insert(s.orders)
+        .values({ orgId, total: "4.00", paymentMethod: "cash", status: "completed", createdAt: new Date("2030-06-12T13:00:00Z"), inputUserId: legacy, completedUserId: legacy })
+        .returning();
+      const res = await as("MANAGER", MANAGER)("/api/reports/order-audit?from=2030-06-12&to=2030-06-12");
+      expect(res.body.rows.find((r: any) => r.id === o.id)).toMatchObject({ enteredByName: "Lee Legacy", completedByName: "Lee Legacy" });
+    } finally {
+      const { eq } = await import("drizzle-orm");
+      await db.delete(s.allowedUsers).where(eq(s.allowedUsers.replitUserId, legacy));
+    }
+  });
 });

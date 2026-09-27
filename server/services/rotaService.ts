@@ -4,7 +4,7 @@
  * for an org, hands them to it, and writes what a manager or cashier changes.
  */
 import { db } from "../db";
-import { and, desc, eq, gte, inArray, isNull, lte, ne, or } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNull, lte, ne, or, sql } from "drizzle-orm";
 import {
   allowedUsers,
   shiftPatterns,
@@ -179,6 +179,20 @@ async function aliasesOf(userId: string, client: Db | Tx = db): Promise<string[]
 }
 
 /**
+ * Serialises every rota write for one person (in one org) until the
+ * transaction ends. A cell edit and an approval, or two revokes of
+ * overlapping requests, for the same person at the same moment would
+ * otherwise each check the other's not-yet-committed state and both proceed.
+ * Locked in a fixed order across all of the person's ids, so two writers
+ * never wait on each other the other way round.
+ */
+async function lockPerson(tx: Tx, orgId: string, aliases: string[]): Promise<void> {
+  for (const id of [...aliases].sort()) {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`rota:${orgId}:${id}`}))`);
+  }
+}
+
+/**
  * A manager's one-off change for one person on one date, as the rota page
  * saves it. In one transaction:
  *   - a day off written by a request that is still approved is not
@@ -197,6 +211,7 @@ export async function saveOverride(
   createdByUserId: string | null,
 ): Promise<ShiftOverride> {
   return db.transaction(async (tx) => {
+    await lockPerson(tx, orgId, member.aliases);
     const existing = await tx
       .select({ id: shiftOverrides.id, userId: shiftOverrides.userId, timeOffRequestId: shiftOverrides.timeOffRequestId })
       .from(shiftOverrides)
@@ -370,6 +385,8 @@ export async function decideTimeOffRequest(
     }
 
     const aliases = await aliasesOf(row.userId, tx);
+    // Everything below reads and writes this person's rota; see lockPerson.
+    await lockPerson(tx, orgId, aliases);
 
     if (decision === "approved") {
       const dates = timeOffDates(row.startDate, row.endDate);

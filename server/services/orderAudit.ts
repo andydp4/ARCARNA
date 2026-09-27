@@ -12,21 +12,18 @@
  * viewer sees cashiers' names and their own; anyone else reads as hidden.
  */
 import { db } from "../db";
-import { and, desc, eq, gte, inArray, lt } from "drizzle-orm";
-import { orders, orderItems, products, customers, orderEvents, orderPayments, loyaltyLedger, refunds } from "@shared/schema";
+import { and, desc, eq, gte, inArray, lt, or, isNull, ne, sql } from "drizzle-orm";
+import { orders, orderItems, products, customers, orderEvents, orderPayments, loyaltyLedger, refunds, allowedUsers } from "@shared/schema";
 import { isRole, roleRank } from "@shared/rbac";
 import { shiftIsoDate, tradingDayBounds } from "@shared/time/tradingDay";
 import { resolveUserNames } from "./userDisplayName";
 import { orgTimeZone } from "./tradingDayShift";
 import { mayFilterEvidenceBy, type EvidenceViewer } from "./evidenceStaff";
-import { loadPeople } from "./staffPerformance";
 
 /** Longest range the list answers in one go (about a quarter). */
 export const ORDER_AUDIT_MAX_DAYS = 93;
 /** Most rows returned; the response says when there were more. */
 export const ORDER_AUDIT_ROW_LIMIT = 2000;
-/** Deletions looked at when placing deleted orders on the day they were taken. */
-const DELETED_SCAN_LIMIT = 5000;
 /** What a person reads as when the viewer may not see who it is (Q14). */
 export const HIDDEN_NAME = "Senior staff (hidden)";
 
@@ -61,16 +58,52 @@ export function parseOrderAuditQuery(q: Record<string, unknown>): { fromIso: str
 }
 
 /** Resolves ids to display names, masking anyone the viewer may not see. */
+/**
+ * The org's staff, reachable by EITHER of each person's ids. Orders and
+ * events keyed in before someone's login was linked to Clerk carry their
+ * legacy id; keyed by one id only, those rows would read as an unknown
+ * person and be hidden from a manager — even the manager's own.
+ */
+async function staffByAnyId(orgId: string): Promise<Map<string, { name: string; role: string; primary: string }>> {
+  const rows = await db
+    .select({ authUserId: allowedUsers.authUserId, replitUserId: allowedUsers.replitUserId, name: allowedUsers.name, role: allowedUsers.role })
+    .from(allowedUsers)
+    .where(
+      and(
+        ne(allowedUsers.role, "CUSTOMER"),
+        or(eq(allowedUsers.orgId, orgId), and(isNull(allowedUsers.orgId), eq(allowedUsers.role, "SUPER_ADMIN"))),
+      ),
+    );
+  const map = new Map<string, { name: string; role: string; primary: string }>();
+  for (const r of rows) {
+    const role = String(r.role ?? "CASHIER");
+    const primary = r.authUserId || r.replitUserId;
+    const person = { name: r.name?.trim() || `Unnamed ${role.toLowerCase()}`, role, primary };
+    for (const id of [r.authUserId, r.replitUserId]) if (id) map.set(id, person);
+  }
+  return map;
+}
+
 async function namer(orgId: string, ids: Iterable<string>, viewer: EvidenceViewer): Promise<(id: string | null | undefined) => string | null> {
   const all = [...new Set([...ids].filter(Boolean))];
   const seesEveryone = !!viewer.role && isRole(viewer.role) && roleRank(viewer.role) >= roleRank("ADMIN");
-  const [names, people] = await Promise.all([resolveUserNames(all), seesEveryone ? Promise.resolve(null) : loadPeople(orgId)]);
+  const [names, people] = await Promise.all([resolveUserNames(all), seesEveryone ? Promise.resolve(null) : staffByAnyId(orgId)]);
+  const me = viewer.userId ? people?.get(viewer.userId)?.primary ?? viewer.userId : null;
   return (id) => {
     if (!id) return null;
-    if (people && !mayFilterEvidenceBy(viewer, { id, role: people.get(id)?.role ?? null })) return HIDDEN_NAME;
-    return people?.get(id)?.name ?? names.get(id) ?? id;
+    if (people) {
+      const person = people.get(id);
+      // Compared by the person, not the raw id, so both of someone's ids count as them.
+      const target = { id: person?.primary ?? id, role: person?.role ?? null };
+      if (!mayFilterEvidenceBy({ userId: me, role: viewer.role }, target)) return HIDDEN_NAME;
+      return person?.name ?? names.get(id) ?? id;
+    }
+    return names.get(id) ?? id;
   };
 }
+
+/** A UTC instant as the naive-UTC timestamp these columns hold. */
+const utcTs = (d: Date) => sql`(${d.toISOString()}::timestamptz AT TIME ZONE 'UTC')`;
 
 export interface OrderAuditRow {
   id: string;
@@ -129,15 +162,31 @@ export async function getOrderAuditList(
       .where(and(eq(orders.orgId, orgId), gte(orders.createdAt, start), lt(orders.createdAt, end)))
       .orderBy(desc(orders.createdAt))
       .limit(ORDER_AUDIT_ROW_LIMIT + 1),
-    // An order is deleted on or after the day it was taken, so any deletion
-    // of an order taken in range happened at or after `start`; which of them
-    // belong here is decided below, by when each order was taken.
-    db
-      .select({ orderId: orderEvents.orderId, at: orderEvents.at, userId: orderEvents.userId, meta: orderEvents.meta })
-      .from(orderEvents)
-      .where(and(eq(orderEvents.orgId, orgId), eq(orderEvents.kind, "deleted"), gte(orderEvents.at, start)))
-      .orderBy(orderEvents.at)
-      .limit(DELETED_SCAN_LIMIT),
+    // Deleted orders TAKEN in range, whenever they were deleted: when an
+    // order was taken is recorded on the delete (newer deletions), else on its
+    // "received" event, else — for the oldest rows — it is the deletion itself.
+    // Decided in the query, so the row limit counts only rows that belong here.
+    (() => {
+      const takenAt = sql`COALESCE(
+        (${orderEvents.meta}->>'createdAt')::timestamptz AT TIME ZONE 'UTC',
+        (SELECT min(r.at) FROM order_events r
+          WHERE r.org_id = ${orderEvents.orgId} AND r.order_id = ${orderEvents.orderId} AND r.kind = 'received'),
+        ${orderEvents.at})`;
+      return db
+        .select({ orderId: orderEvents.orderId, at: orderEvents.at, userId: orderEvents.userId, meta: orderEvents.meta })
+        .from(orderEvents)
+        .where(
+          and(
+            eq(orderEvents.orgId, orgId),
+            eq(orderEvents.kind, "deleted"),
+            gte(orderEvents.at, start),
+            sql`${takenAt} >= ${utcTs(start)}`,
+            sql`${takenAt} < ${utcTs(end)}`,
+          ),
+        )
+        .orderBy(desc(orderEvents.at))
+        .limit(ORDER_AUDIT_ROW_LIMIT + 1);
+    })(),
   ]);
 
   // When a deleted order was entered is on its "received" event, if it had one.
@@ -222,7 +271,7 @@ export async function getOrderAuditList(
     });
 
   const all = [...live, ...gone].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-  const truncated = rows.length > ORDER_AUDIT_ROW_LIMIT || deletedRows.length >= DELETED_SCAN_LIMIT || all.length > ORDER_AUDIT_ROW_LIMIT;
+  const truncated = rows.length > ORDER_AUDIT_ROW_LIMIT || deletedRows.length > ORDER_AUDIT_ROW_LIMIT || all.length > ORDER_AUDIT_ROW_LIMIT;
   return {
     period: { from: range.fromIso, to: range.toIso, timezone },
     rows: all.slice(0, ORDER_AUDIT_ROW_LIMIT),

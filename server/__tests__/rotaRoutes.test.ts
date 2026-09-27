@@ -300,4 +300,33 @@ describe.skipIf(!hasDb)("Rota (database)", () => {
       .returning();
     expect((await manager().delete(`/api/rota/overrides/${row.id}`)).status).toBe(204);
   });
+  it("revoking two overlapping approvals at the same moment leaves no orphaned day off", async () => {
+    for (const [n, month] of [[0, "11"], [1, "12"]] as const) {
+      const a = await cashier().post("/api/rota/time-off", { startDate: `2031-${month}-02`, endDate: `2031-${month}-04` });
+      const b = await cashier().post("/api/rota/time-off", { startDate: `2031-${month}-04`, endDate: `2031-${month}-06` });
+      await manager().post(`/api/rota/time-off/${a.body.id}/decide`, { decision: "approved" });
+      await manager().post(`/api/rota/time-off/${b.body.id}/decide`, { decision: "approved" });
+      const [ra, rb] = await Promise.all([
+        manager().post(`/api/rota/time-off/${a.body.id}/decide`, { decision: "revoked" }),
+        otherManager().post(`/api/rota/time-off/${b.body.id}/decide`, { decision: "revoked" }),
+      ]);
+      expect([ra.status, rb.status], `round ${n}`).toEqual([200, 200]);
+      const grid = await manager().get(`/api/rota?from=2031-${month}-02&days=5`);
+      const days = grid.body.people.find((p: any) => p.userId === CASHIER_CLERK).days.map((d: any) => d.status);
+      expect(days, `round ${n}`).not.toContain("off");
+    }
+  });
+
+  it("a cell edit racing an approval never leaves an approved day shown as working", async () => {
+    const date = "2031-10-07";
+    const req = await cashier().post("/api/rota/time-off", { startDate: date, endDate: date });
+    const [edit, approve] = await Promise.all([
+      manager().post("/api/rota/overrides", { userId: CASHIER_CLERK, date, status: "working", startTime: "09:00", endTime: "17:00" }),
+      otherManager().post(`/api/rota/time-off/${req.body.id}/decide`, { decision: "approved" }),
+    ]);
+    expect(approve.status).toBe(200);
+    expect([200, 409]).toContain(edit.status);
+    const grid = await manager().get(`/api/rota?from=${date}&days=1`);
+    expect(grid.body.people.find((p: any) => p.userId === CASHIER_CLERK).days[0].status).toBe("off");
+  });
 });
