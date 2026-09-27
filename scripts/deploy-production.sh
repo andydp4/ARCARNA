@@ -38,6 +38,33 @@ if ! (
   exit 1
 fi
 
+# Database reachability — the third thing knowable before anything is touched.
+# A set DATABASE_URL is not a reachable one. If the database cannot be reached
+# now, the migrations below will fail with the app already stopped, and the
+# till stays down until someone SSHes in. Checking here costs one round trip
+# and leaves the running app untouched when the answer is no. Retried, because
+# a Neon pooler that has just woken can drop the first handshake.
+if ! (
+  set -a
+  # shellcheck disable=SC1091
+  source .env
+  set +a
+  export PGCONNECT_TIMEOUT="${PGCONNECT_TIMEOUT:-20}"
+  for attempt in 1 2 3; do
+    if psql "$DATABASE_URL" -qAtc 'select 1' >/dev/null 2>&1; then
+      exit 0
+    fi
+    echo "  database not reachable (attempt $attempt of 3)"
+    [[ $attempt -lt 3 ]] && sleep $((attempt * 5))
+  done
+  exit 1
+); then
+  echo "ERROR: cannot reach the database in DATABASE_URL."
+  echo "  Nothing was pulled, built or stopped — the running app is untouched."
+  echo "  Check the database is up, then run the deploy again."
+  exit 1
+fi
+
 mkdir -p logs
 
 echo "=== git pull ==="
