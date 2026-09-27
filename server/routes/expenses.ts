@@ -121,6 +121,8 @@ export function registerExpenseRoutes(app: Express, scoped: RequestHandler[]): v
       }
       
       const report = await storage.getExpenseReport(startDate, endDate, ctx.orgId);
+      // Costs, overheads and who logged each expense: not for any cache.
+      res.setHeader("Cache-Control", "no-store, private");
       const { resolveUserNames } = await import("../services/userDisplayName");
       const names = await resolveUserNames(
         report.orderExpenseList.map((r: { addedByUserId: string | null }) => r.addedByUserId).filter((id: string | null): id is string => !!id),
