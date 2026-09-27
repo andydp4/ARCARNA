@@ -172,4 +172,20 @@ describe.skipIf(!hasDb)("Order Audit (database)", () => {
       .set("x-test-user", ADMIN);
     expect(elsewhere.status).toBe(404);
   });
+  it("lists a deleted order on the day it was taken, not the day it was deleted", async () => {
+    const late = randomUUID();
+    await db.insert(s.orderEvents).values({
+      orgId,
+      orderId: late,
+      kind: "deleted",
+      userId: MANAGER,
+      at: new Date("2030-06-11T10:00:00Z"), // trading day 06-11
+      meta: { customerName: "Late Delete", total: "3.00", createdAt: "2030-06-10T14:00:00.000Z", inputUserId: CASHIER },
+    });
+    const dayTaken = await as("ADMIN", ADMIN)("/api/reports/order-audit?from=2030-06-10&to=2030-06-10");
+    const row = dayTaken.body.rows.find((r: any) => r.id === late);
+    expect(row).toMatchObject({ status: "deleted", createdAt: "2030-06-10T14:00:00.000Z", enteredByName: "Cara Cashier", deletedByName: "Manny Manager" });
+    const dayDeleted = await as("ADMIN", ADMIN)("/api/reports/order-audit?from=2030-06-11&to=2030-06-11");
+    expect(dayDeleted.body.rows.map((r: any) => r.id)).not.toContain(late);
+  });
 });

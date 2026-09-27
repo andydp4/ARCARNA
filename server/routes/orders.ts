@@ -2074,6 +2074,9 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
               total: order.total,
               fulfilmentMethod: order.fulfilmentMethod,
               status: order.status,
+              // So Order Audit can list it on the day it was taken, not the day it was deleted.
+              createdAt: order.createdAt ? new Date(order.createdAt).toISOString() : null,
+              inputUserId: order.inputUserId ?? null,
             },
           });
         }

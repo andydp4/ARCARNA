@@ -25,6 +25,8 @@ import { loadPeople } from "./staffPerformance";
 export const ORDER_AUDIT_MAX_DAYS = 93;
 /** Most rows returned; the response says when there were more. */
 export const ORDER_AUDIT_ROW_LIMIT = 2000;
+/** Deletions looked at when placing deleted orders on the day they were taken. */
+const DELETED_SCAN_LIMIT = 5000;
 /** What a person reads as when the viewer may not see who it is (Q14). */
 export const HIDDEN_NAME = "Senior staff (hidden)";
 
@@ -127,12 +129,15 @@ export async function getOrderAuditList(
       .where(and(eq(orders.orgId, orgId), gte(orders.createdAt, start), lt(orders.createdAt, end)))
       .orderBy(desc(orders.createdAt))
       .limit(ORDER_AUDIT_ROW_LIMIT + 1),
+    // An order is deleted on or after the day it was taken, so any deletion
+    // of an order taken in range happened at or after `start`; which of them
+    // belong here is decided below, by when each order was taken.
     db
       .select({ orderId: orderEvents.orderId, at: orderEvents.at, userId: orderEvents.userId, meta: orderEvents.meta })
       .from(orderEvents)
-      .where(and(eq(orderEvents.orgId, orgId), eq(orderEvents.kind, "deleted"), gte(orderEvents.at, start), lt(orderEvents.at, end)))
-      .orderBy(desc(orderEvents.at))
-      .limit(ORDER_AUDIT_ROW_LIMIT + 1),
+      .where(and(eq(orderEvents.orgId, orgId), eq(orderEvents.kind, "deleted"), gte(orderEvents.at, start)))
+      .orderBy(orderEvents.at)
+      .limit(DELETED_SCAN_LIMIT),
   ]);
 
   // When a deleted order was entered is on its "received" event, if it had one.
@@ -159,6 +164,7 @@ export async function getOrderAuditList(
     [
       ...rows.flatMap((r) => [r.inputUserId, r.completedUserId]),
       ...deletedRows.map((d) => d.userId),
+      ...deletedRows.map((d) => (d.meta as Record<string, unknown> | null)?.inputUserId).filter((v): v is string => typeof v === "string"),
       ...receivedRows.map((r) => r.userId),
     ].filter((id): id is string => !!id),
     viewer,
@@ -181,22 +187,34 @@ export async function getOrderAuditList(
   }));
 
   const liveIds = new Set(live.map((r) => r.id));
+  // When a deleted order was taken: recorded on the delete (newer deletions),
+  // else its "received" event, else — for the oldest rows — the deletion itself.
+  const takenAt = (d: (typeof deletedRows)[number]): Date => {
+    const meta = (d.meta ?? {}) as Record<string, unknown>;
+    if (typeof meta.createdAt === "string" && !Number.isNaN(Date.parse(meta.createdAt))) return new Date(meta.createdAt);
+    return received.get(d.orderId!)?.at ?? d.at;
+  };
   const gone: OrderAuditRow[] = deletedRows
     .filter((d) => d.orderId && !liveIds.has(d.orderId))
+    .filter((d) => {
+      const t = takenAt(d).getTime();
+      return t >= start.getTime() && t < end.getTime();
+    })
     .map((d) => {
       const meta = (d.meta ?? {}) as Record<string, unknown>;
       const rec = received.get(d.orderId!);
+      const enteredBy = typeof meta.inputUserId === "string" ? meta.inputUserId : rec?.userId;
       return {
         id: d.orderId!,
         shortCode: d.orderId!.slice(0, 8),
-        createdAt: (rec?.at ?? d.at).toISOString(),
+        createdAt: takenAt(d).toISOString(),
         status: "deleted",
         channel: null,
         fulfilmentMethod: typeof meta.fulfilmentMethod === "string" ? meta.fulfilmentMethod : null,
         paymentMethod: null,
         total: num(meta.total),
         customerName: typeof meta.customerName === "string" ? meta.customerName : null,
-        enteredByName: name(rec?.userId),
+        enteredByName: name(enteredBy),
         completedByName: null,
         deletedAt: d.at.toISOString(),
         deletedByName: name(d.userId) ?? "System",
@@ -204,7 +222,7 @@ export async function getOrderAuditList(
     });
 
   const all = [...live, ...gone].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-  const truncated = rows.length > ORDER_AUDIT_ROW_LIMIT || deletedRows.length > ORDER_AUDIT_ROW_LIMIT || all.length > ORDER_AUDIT_ROW_LIMIT;
+  const truncated = rows.length > ORDER_AUDIT_ROW_LIMIT || deletedRows.length >= DELETED_SCAN_LIMIT || all.length > ORDER_AUDIT_ROW_LIMIT;
   return {
     period: { from: range.fromIso, to: range.toIso, timezone },
     rows: all.slice(0, ORDER_AUDIT_ROW_LIMIT),
@@ -275,11 +293,18 @@ export async function getOrderAuditDetail(orgId: string, orderId: string, viewer
     if (!deleted) return null;
     const meta = (deleted.meta ?? {}) as Record<string, unknown>;
     const receivedEv = eventRows.find((e) => e.kind === "received");
-    const name = await namer(orgId, eventRows.map((e) => e.userId).filter((id): id is string => !!id), viewer);
+    const name = await namer(
+      orgId,
+      [...eventRows.map((e) => e.userId), typeof meta.inputUserId === "string" ? meta.inputUserId : null].filter((id): id is string => !!id),
+      viewer,
+    );
     return {
       order: {
         id: orderId,
-        createdAt: (receivedEv?.at ?? eventRows[0].at).toISOString(),
+        createdAt:
+          typeof meta.createdAt === "string" && !Number.isNaN(Date.parse(meta.createdAt))
+            ? new Date(meta.createdAt).toISOString()
+            : (receivedEv?.at ?? eventRows[0].at).toISOString(),
         settledAt: null,
         status: "deleted",
         channel: null,
@@ -296,7 +321,7 @@ export async function getOrderAuditDetail(orgId: string, orderId: string, viewer
         vatAmount: null,
         deliveryFee: null,
         customerName: typeof meta.customerName === "string" ? meta.customerName : null,
-        enteredByName: name(receivedEv?.userId),
+        enteredByName: name(typeof meta.inputUserId === "string" ? meta.inputUserId : receivedEv?.userId),
         assignedToName: null,
         completedByName: null,
         deletedAt: deleted.at.toISOString(),
