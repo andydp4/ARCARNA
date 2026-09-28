@@ -27,8 +27,10 @@ export interface RotaDay {
   endTime: string | null;
   /** Every shift this person has on this date, sorted by start time. Empty when off or unscheduled. */
   shifts: RotaShiftSegment[];
-  /** Set when a manager's override (not a pattern, not a time-off approval) produced this day. */
+  /** Set when an override (a manager's cover or swap, or an approved day off) produced this day. */
   isOverride: boolean;
+  /** That override's id, so it can be removed to fall back to the pattern. */
+  overrideId: string | null;
 }
 
 function isoDow(date: string): number {
@@ -41,7 +43,7 @@ function isoDow(date: string): number {
 export function resolvePersonDay(
   date: string,
   patterns: Pick<ShiftPattern, "dayOfWeek" | "startTime" | "endTime" | "effectiveFrom" | "effectiveUntil" | "isActive">[],
-  overrides: Pick<ShiftOverride, "date" | "status" | "startTime" | "endTime">[],
+  overrides: (Pick<ShiftOverride, "date" | "status" | "startTime" | "endTime"> & { id?: string })[],
 ): RotaDay {
   const override = overrides.find((o) => o.date === date);
   if (override) {
@@ -53,6 +55,7 @@ export function resolvePersonDay(
       endTime: working ? override.endTime : null,
       shifts: working && override.startTime && override.endTime ? [{ startTime: override.startTime, endTime: override.endTime }] : [],
       isOverride: true,
+      overrideId: override.id ?? null,
     };
   }
 
@@ -79,17 +82,18 @@ export function resolvePersonDay(
       endTime: dayPatterns[dayPatterns.length - 1].endTime,
       shifts: dayPatterns,
       isOverride: false,
+      overrideId: null,
     };
   }
 
-  return { date, status: "unscheduled", startTime: null, endTime: null, shifts: [], isOverride: false };
+  return { date, status: "unscheduled", startTime: null, endTime: null, shifts: [], isOverride: false, overrideId: null };
 }
 
 /** Every date's resolved day for one person, in order. */
 export function resolvePersonRota(
   dates: string[],
   patterns: Pick<ShiftPattern, "dayOfWeek" | "startTime" | "endTime" | "effectiveFrom" | "effectiveUntil" | "isActive">[],
-  overrides: Pick<ShiftOverride, "date" | "status" | "startTime" | "endTime">[],
+  overrides: (Pick<ShiftOverride, "date" | "status" | "startTime" | "endTime"> & { id?: string })[],
 ): RotaDay[] {
   return dates.map((date) => resolvePersonDay(date, patterns, overrides));
 }

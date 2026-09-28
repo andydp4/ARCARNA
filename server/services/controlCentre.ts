@@ -255,7 +255,7 @@ export async function getControlCentreSnapshot(
     // `deriveCardState` over the same rows the board itself renders — never
     // a second, ad hoc lateness rule invented for this dashboard. `userId:
     // null` because this snapshot is org-wide, not "mine".
-    getOpsBoard(orgId, null, { now }).catch(() => null),
+    getOpsBoard(orgId, null, { now, includeCompleted: false }).catch(() => null),
   ]);
 
   // Same shape as /api/inventory/alerts: at or under the stock limit, and

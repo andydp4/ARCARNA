@@ -235,9 +235,16 @@
   <h2>Order Audit</h2>
   <p><span class="ui">Order Audit</span> answers <em>what exactly happened on this order, and who did each part of it?</em> Where Order Timing shows how fast orders move in general, Order Audit is the opposite zoom: one order, everything about it, on one screen.</p>
   <ol class="steps">
-    <li>Choose a date range at the top — the usual presets, or <span class="ui">Custom</span> — and the list fills with every order in that window: date, customer, who entered it, who completed it, payment method, status and total.</li>
+    <li>Choose a date range at the top — the usual presets, or <span class="ui">Custom</span> — and the list fills with every order in that window: date, customer, who entered it, who completed it, payment method, status and total. Dates are trading days (06:00 to 06:00), like every other Evidence page, and both the first and last day are included; the line beside the picker repeats the range. Up to 93 days can be shown at once, and if a range holds more than 2,000 orders a note says so — pick a shorter range to see them all.</li>
+    <li>Deleted orders stay on the list, marked <span class="ui">deleted</span> in red with when and by whom. Opening one shows what was recorded before it went: the customer, the total, who entered it and its timeline. Its items and payments went with it.</li>
     <li>Select a row to open the full breakdown: the items sold, the money (subtotal, VAT, tier discount, any promo code and its discount, any loyalty points redeemed, the delivery fee and the total), the payment split if more than one method was used, any loyalty points earned, any refund and who gave it, and finally the timeline — every stage the order passed through, when, and by whom.</li>
   </ol>
+  <figure>
+    <img src="../images/v12-09-order-audit.png" alt="Order Audit for Today: a list of orders with date, customer, entered by, completed by, payment, status and total, including one marked deleted with who deleted it" />
+    <figcaption>Order Audit: every order in the chosen trading days, deleted ones included. Select a row for its full story.</figcaption>
+    <!-- SHOT: route=/reports/order-audit ; role=manager ; viewport=desktop ; show=the page header ("TRUTHS CENTRE" eyebrow, "Order Audit"), the preset picker on "Today" with the "Trading days … (06:00 to 06:00)" line, and the list with several orders including one red "deleted" row and one row whose staff read "Senior staff (hidden)" ; state=a handful of orders today by different staff, one deleted by the manager, one entered by an admin ; tours marked seen; menu collapsed -->
+  </figure>
+  <p>As on Staff Performance and Order Timing, a <span class="role role-manager">MANAGER</span> sees the names of cashiers and themselves; anyone above that reads as <em>Senior staff (hidden)</em>. Admins and the owner see every name. Times are shown in the shop's timezone.</p>
   <div class="callout">
     <strong>Where a strange figure usually gets explained</strong>
     If a report shows a total that does not look right, Order Audit is where to check it: it has every input that figure was built from, not just the figure itself.

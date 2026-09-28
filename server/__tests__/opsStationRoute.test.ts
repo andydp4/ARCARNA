@@ -79,7 +79,7 @@ describe("GET /api/operations/staff", () => {
     const req = { orgContext: { orgId: "org-1" }, user: { id: "sam" } } as any;
     const res = fakeRes();
     await handler(req, res, vi.fn());
-    expect(getOpsBoard).toHaveBeenCalledWith("org-1", "sam");
+    expect(getOpsBoard).toHaveBeenCalledWith("org-1", "sam", { includeCompleted: false });
     expect(res.json).toHaveBeenCalledWith({
       staff: [{ userId: "sam", name: "Sam", station: "collection", present: true }],
       me: { userId: "sam", station: "collection", onBreak: false },

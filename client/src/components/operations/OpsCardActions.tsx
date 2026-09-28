@@ -24,10 +24,12 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { roleRank, type Role } from "@shared/rbac";
-import type { DerivedCardState, OpsTimingSettings } from "@shared/orders/opsState";
+import { settledBeforeToday, type DerivedCardState, type OpsTimingSettings } from "@shared/orders/opsState";
 import type { OpsBoardStaffRow } from "@/hooks/useOpsBoard";
 import type { BoardOrder } from "@/lib/orderTypes";
 import { formatTimeOfDay } from "@/lib/opsClock";
+import { QuickPrintLabelsButton } from "@/components/labels/QuickPrintLabelsButton";
+import { orderDueText } from "@/lib/labels/labelRequests";
 import { currentTradingDay, localInstantAt, shiftIsoDate } from "@shared/time/tradingDay";
 import { OpsDelayInline } from "./OpsDelayInline";
 import { OpsPassMenu } from "./OpsPassMenu";
@@ -162,7 +164,11 @@ export function OpsCardActions({
   const isCollection = order.fulfilmentMethod === "collection";
   const isCarriedOver = derived.state === "carried-over";
   const isScheduled = derived.state === "scheduled";
-  const canEditOrDelete = role !== "CASHIER";
+  // Yesterday's completed cards are in the Done tray to look back at. Undo,
+  // Edit and Delete there would rewrite a day that is already over, so they
+  // are not offered; a past day's sale is corrected with a refund (Details → Issue refund).
+  const fromPreviousDay = order.status === "completed" && settledBeforeToday(order.settledAt, settings.timezone, now);
+  const canEditOrDelete = role !== "CASHIER" && !fromPreviousDay;
   const managerPlus = isManagerPlus(role);
   const isAssignee = order.assignedUserId === currentUserId;
   // `assign` to someone else is MANAGER+; a cashier may only pass on an order
@@ -173,7 +179,7 @@ export function OpsCardActions({
   const isCompleter = Boolean(order.completedUserId) && order.completedUserId === currentUserId;
   const withinUndoWindow =
     order.settledAt != null && now.getTime() - new Date(order.settledAt).getTime() <= TEN_MINUTES_MS;
-  const canUndo = order.status === "completed" && (managerPlus || (isCompleter && withinUndoWindow));
+  const canUndo = order.status === "completed" && !fromPreviousDay && (managerPlus || (isCompleter && withinUndoWindow));
   // A completion the brief asks to be honest about: a carried-over order's
   // "now" is not when it was actually handed over, so completing one always
   // asks first rather than silently stamping the tap as the moment.
@@ -316,6 +322,18 @@ export function OpsCardActions({
           <Eye className="h-4 w-4 shrink-0" aria-hidden />
           View
         </Button>
+
+        {/* One tap: the shop's label set for this order (Settings → Labels),
+            live cards and the Done tray alike — reprinting is harmless. */}
+        {!isScheduled && (
+          <QuickPrintLabelsButton
+            orderId={order.id}
+            shortCode={order.shortCode}
+            dueText={orderDueText(derived.dueEffective, now, settings.timezone)}
+            className="px-3"
+            testId={`ops-print-labels-${order.id}`}
+          />
+        )}
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

@@ -25,7 +25,10 @@ import type { Express, RequestHandler } from "express";
 import { subscribeOpsEvents, replaySince, type OpsBusEntry } from "../services/opsBus";
 import { db } from "../db";
 import { opsStaff } from "@shared/schema";
-import { boardOrderForViewer } from "../services/opsBoard";
+import { boardOrderForViewer, boardOrderVisibleTo } from "../services/opsBoard";
+import { currentTradingDay, tradingDayBounds } from "@shared/time/tradingDay";
+import { orgTimeZone } from "../services/tradingDayShift";
+import { isRole, roleRank } from "@shared/rbac";
 
 /** One write per org:user per 60s — see the module doc and the brief's presence row. */
 const PRESENCE_THROTTLE_MS = 60_000;
@@ -77,8 +80,19 @@ function writeSseLine(res: { write: (chunk: string) => unknown; flush?: () => un
  * on it (Q8a: a completed delivery's address is managers and above), on the
  * live stream and on a reconnect's replay alike.
  */
-export function entryForViewer(entry: OpsBusEntry, role: string | null | undefined): OpsBusEntry {
+export function entryForViewer(
+  entry: OpsBusEntry,
+  role: string | null | undefined,
+  viewer?: { userId: string | null; timezone: string; now?: Date },
+): OpsBusEntry | null {
   if (entry.event.type !== "order") return entry;
+  // Q10a, the same rule as the poll (boardPayloadForViewer): below manager, an
+  // earlier day's completed card is not pushed to someone who had no hand in it.
+  if (viewer) {
+    const now = viewer.now ?? new Date();
+    const dayStart = tradingDayBounds(currentTradingDay(viewer.timezone, now), viewer.timezone).start.getTime();
+    if (!boardOrderVisibleTo(entry.event.order, role, viewer.userId, dayStart)) return null;
+  }
   return { ...entry, event: { type: "order", order: boardOrderForViewer(entry.event.order, role) } };
 }
 
@@ -86,8 +100,10 @@ function writeEntry(
   res: { write: (chunk: string) => unknown; flush?: () => unknown },
   entry: OpsBusEntry,
   role: string | null | undefined,
+  viewer?: { userId: string | null; timezone: string },
 ): void {
-  const seen = entryForViewer(entry, role);
+  const seen = entryForViewer(entry, role, viewer);
+  if (!seen) return;
   writeSseLine(res, `id: ${seen.id}\ndata: ${JSON.stringify(seen.event)}\n\n`);
 }
 
@@ -102,6 +118,35 @@ export function registerOpsStreamRoutes(app: Express, scoped: RequestHandler[]):
     const orgId = ctx.orgId;
     const userId: string | null = req.user?.id ?? null;
     const role: string | null = (req.orgContext as { role?: string } | undefined)?.role ?? null;
+    // Q10a needs the org's timezone to tell today's completed cards from an
+    // earlier day's. It is loaded only when the first completed card reaches a
+    // viewer the rule applies to (below manager), so an idle connection still
+    // costs no reads; until it arrives, that viewer's events wait in order
+    // rather than being judged by the wrong day boundary.
+    const managerPlus = !!role && isRole(role) && roleRank(role) >= roleRank("MANAGER");
+    const viewer = { userId, timezone: "Europe/London" };
+    let timezone: "unknown" | "loading" | "known" = managerPlus ? "known" : "unknown";
+    const waiting: OpsBusEntry[] = [];
+    const send = (entry: OpsBusEntry) => {
+      if (timezone === "known") return writeEntry(res, entry, role, viewer);
+      if (timezone === "loading") {
+        waiting.push(entry);
+        return;
+      }
+      if (entry.event.type !== "order" || entry.event.order.status !== "completed") return writeEntry(res, entry, role, viewer);
+      timezone = "loading";
+      waiting.push(entry);
+      orgTimeZone(orgId)
+        .then((tz) => {
+          viewer.timezone = tz;
+        })
+        .catch(() => {})
+        .finally(() => {
+          timezone = "known";
+          if (res.writableEnded || res.destroyed) return;
+          for (const queued of waiting.splice(0)) writeEntry(res, queued, role, viewer);
+        });
+    };
 
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache, no-transform");
@@ -122,10 +167,10 @@ export function registerOpsStreamRoutes(app: Express, scoped: RequestHandler[]):
       // no longer produce.
       writeSseLine(res, `event: reload\ndata: ${JSON.stringify({ reason: "gap" })}\n\n`);
     } else {
-      for (const entry of replay.entries) writeEntry(res, entry, role);
+      for (const entry of replay.entries) send(entry);
     }
 
-    const unsubscribe = subscribeOpsEvents(orgId, (entry) => writeEntry(res, entry, role));
+    const unsubscribe = subscribeOpsEvents(orgId, send);
 
     void touchPresence(orgId, userId);
 

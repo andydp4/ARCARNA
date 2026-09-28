@@ -24,7 +24,8 @@
 import { and, desc, eq, gte, inArray, isNull, lt, ne, or, sql } from "drizzle-orm";
 import { organizations, opsStaff, allowedUsers } from "@shared/schema";
 import { resolveUserNames } from "./userDisplayName";
-import { currentTradingDay, tradingDayBounds } from "@shared/time/tradingDay";
+import { currentTradingDay, shiftIsoDate, tradingDayBounds } from "@shared/time/tradingDay";
+import { isRole, roleRank } from "@shared/rbac";
 import type { CardState } from "@shared/orders/opsState";
 import { deriveCardState, isLiveLaneState } from "@shared/orders/opsState";
 import { listFor, type OpsAlertListItem } from "./opsAlerts";
@@ -34,12 +35,16 @@ import { canSeeDeliveryAddress } from "@shared/accessPolicy";
 const PRESENT_WITHIN_MINUTES = 15;
 
 /**
- * Board orders: open, or completed within this many minutes (the "Done"
- * tray's window). 36 hours so it still shows yesterday's completed work —
- * the owner wants to be able to check back on what was done, not just the
- * last couple of hours.
+ * Board orders: open, or completed since the start of YESTERDAY's trading day
+ * (the "Done" tray's window). The owner wants to check back on what was done
+ * yesterday, not just the last couple of hours. A fixed trading-day boundary
+ * rather than a rolling "last 36 hours": a rolling window had already cut
+ * yesterday's morning off by the afternoon, and moved every time the board
+ * refreshed.
  */
-const RECENT_COMPLETED_MINUTES = 36 * 60;
+export function boardCompletedCutoff(now: Date, timeZone: string): Date {
+  return tradingDayBounds(shiftIsoDate(currentTradingDay(timeZone, now), -1), timeZone).start;
+}
 
 export interface OpsBoardSettings {
   prepSlaMinutes: number;
@@ -257,7 +262,7 @@ async function selectBoardRows(orgId: string, cutoff: Date): Promise<RawOrderRow
 
 /**
  * The real "done today" count — settled within today's trading day, not
- * `RECENT_COMPLETED_MINUTES`. That cutoff exists to keep `selectBoardRows`
+ * `boardCompletedCutoff`. That cutoff exists to keep `selectBoardRows`
  * (and the 150ms-at-2,000-orders card render it feeds) cheap; it is not a
  * day boundary, and reusing it for the tile means "Done today" silently
  * drops anything settled outside that rolling window — the exact bug
@@ -536,6 +541,12 @@ async function loadStaff(
 
 export interface GetOpsBoardOptions {
   now?: Date;
+  /**
+   * False for callers that never show the Done tray (the staff list, the
+   * Control Centre snapshot): skips loading every completed order since
+   * yesterday. `summary.completedToday` is its own count and is unaffected.
+   */
+  includeCompleted?: boolean;
 }
 
 /** The full `GET /api/orders/board` payload for one org, as one signed-in user sees it. */
@@ -546,7 +557,8 @@ export async function getOpsBoard(
 ): Promise<OpsBoardPayload> {
   const now = options.now ?? new Date();
   const { timezone, settings } = await loadOrgSettings(orgId);
-  const cutoff = new Date(now.getTime() - RECENT_COMPLETED_MINUTES * 60_000);
+  // `now` as the cutoff admits no completed order at all (settled_at >= now).
+  const cutoff = options.includeCompleted === false ? now : boardCompletedCutoff(now, timezone);
   const tradingDay = currentTradingDay(timezone, now);
   const bounds = tradingDayBounds(tradingDay, timezone);
 
@@ -766,8 +778,50 @@ export function boardOrderForViewer(order: BoardOrderPayload, role: string | nul
   };
 }
 
-export function boardPayloadForViewer(payload: OpsBoardPayload, role: string | null | undefined): OpsBoardPayload {
-  return { ...payload, orders: payload.orders.map((o) => boardOrderForViewer(o, role)) };
+type VisibilityFields = {
+  status: string | null;
+  settledAt: string | Date | null;
+  inputUserId: string | null;
+  completedUserId: string | null;
+  assignedUserId: string | null;
+};
+
+/**
+ * Q10a for one board card: below manager, a completed order settled before
+ * today's trading day (`dayStartMs`) is shown only to whoever entered, took or
+ * completed it. The poll, the live stream and the phone search all ask this,
+ * so none of them can show a cashier a card the others would not.
+ */
+export function boardOrderVisibleTo(
+  o: VisibilityFields,
+  role: string | null | undefined,
+  userId: string | null,
+  dayStartMs: number,
+): boolean {
+  if (role && isRole(role) && roleRank(role) >= roleRank("MANAGER")) return true;
+  if (o.status !== "completed" || !o.settledAt || new Date(o.settledAt).getTime() >= dayStartMs) return true;
+  return !!userId && (o.inputUserId === userId || o.completedUserId === userId || o.assignedUserId === userId);
+}
+
+/**
+ * The whole board as one viewer may see it. Besides each card's Q8a cut, the
+ * Done tray's earlier days follow Q10a: below manager, a completed order from
+ * before today's trading day is shown only to whoever entered, took or
+ * completed it — a cashier's own history, not the whole shop's yesterday.
+ */
+export function boardPayloadForViewer(
+  payload: OpsBoardPayload,
+  role: string | null | undefined,
+  userId: string | null = null,
+): OpsBoardPayload {
+  const dayStart = tradingDayBounds(payload.tradingDay, payload.timezone).start.getTime();
+  const orders = payload.orders.filter((o) => boardOrderVisibleTo(o, role, userId, dayStart));
+  const shown = new Set(orders.map((o) => o.id));
+  return {
+    ...payload,
+    orders: orders.map((o) => boardOrderForViewer(o, role)),
+    alerts: orders.length === payload.orders.length ? payload.alerts : payload.alerts.filter((a) => shown.has(a.orderId)),
+  };
 }
 
 /**
@@ -779,12 +833,21 @@ export async function findBoardOrderIdsByPhone(
   orgId: string,
   formattedPhone: string,
   now: Date = new Date(),
+  viewer: { role: string | null | undefined; userId: string | null } | null = null,
 ): Promise<string[]> {
   const { db } = await import("../../apps/server/src/db");
   const { orders, customers } = await import("../../apps/server/src/db/schema");
-  const cutoff = new Date(now.getTime() - RECENT_COMPLETED_MINUTES * 60_000);
+  const { timezone } = await loadOrgSettings(orgId);
+  const cutoff = boardCompletedCutoff(now, timezone);
   const rows = await db
-    .select({ id: orders.id })
+    .select({
+      id: orders.id,
+      status: orders.status,
+      settledAt: orders.settled_at,
+      inputUserId: orders.input_user_id,
+      completedUserId: orders.completed_user_id,
+      assignedUserId: orders.assigned_user_id,
+    })
     .from(orders)
     .innerJoin(customers, eq(orders.customer_id, customers.id))
     .where(
@@ -794,5 +857,7 @@ export async function findBoardOrderIdsByPhone(
         or(ne(orders.status, "completed"), gte(orders.settled_at, cutoff)),
       ),
     );
-  return rows.map((r) => r.id as string);
+  if (!viewer) return rows.map((r) => r.id as string);
+  const dayStart = tradingDayBounds(currentTradingDay(timezone, now), timezone).start.getTime();
+  return rows.filter((r) => boardOrderVisibleTo(r as VisibilityFields, viewer.role, viewer.userId, dayStart)).map((r) => r.id as string);
 }

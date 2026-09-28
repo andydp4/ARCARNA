@@ -866,7 +866,7 @@ export class DatabaseStorage implements IStorage {
       "name", "tradingName", "email", "phone", "address", "vatNumber", "companyNumber",
       "currency", "timezone", "businessType", "logoUrl", "invoiceTemplate", "invoicePrefix",
       "invoiceStartNumber", "paymentTerms", "defaultTaxRate", "receiptFooter", "receiptStyle",
-      "receiptTemplateHtml",
+      "receiptTemplateHtml", "labelSettings",
       "accentStyle", "businessColors", "setupWizardState", "onboardingState",
       "receiptLogoEnabled", "invoiceLogoEnabled",
       "invoiceBankName", "invoiceBankSortCode", "invoiceBankAccountNumber", "invoicePaymentLink",
@@ -1702,6 +1702,7 @@ export class DatabaseStorage implements IStorage {
     // Add daily overhead to trends  
     const enhancedTrends = dailyTrends.map(day => ({
       ...day,
+      orderExpenses: Number(day.orderExpenses) || 0,
       overhead: analytics.dailyOverhead,
       total: parseFloat(day.orderExpenses.toString()) + analytics.dailyOverhead,
     }));
@@ -1713,13 +1714,19 @@ export class DatabaseStorage implements IStorage {
       // ARC-025: an empty category (or no overhead/order expenses at all in
       // range) divided by zero here and rendered "NaN%" on the pie chart —
       // guarded to a real 0% instead.
+      // SUM/COUNT come back from Postgres as numeric strings; the pie charts
+      // plot `total`, and a string there drew an empty chart.
       overheadByCategory: overheadByCategory.map(cat => ({
         ...cat,
-        percentage: analytics.overheadTotal > 0 ? (cat.total / analytics.overheadTotal) * 100 : 0,
+        total: Number(cat.total) || 0,
+        count: Number(cat.count) || 0,
+        percentage: analytics.overheadTotal > 0 ? ((Number(cat.total) || 0) / analytics.overheadTotal) * 100 : 0,
       })),
       orderExpensesByCategory: orderExpensesByCategory.map(cat => ({
         ...cat,
-        percentage: analytics.orderExpenseTotal > 0 ? (cat.total / analytics.orderExpenseTotal) * 100 : 0,
+        total: Number(cat.total) || 0,
+        count: Number(cat.count) || 0,
+        percentage: analytics.orderExpenseTotal > 0 ? ((Number(cat.total) || 0) / analytics.orderExpenseTotal) * 100 : 0,
       })),
       dailyTrends: enhancedTrends,
       // The individual rows behind orderExpensesByCategory (owner ask: "where

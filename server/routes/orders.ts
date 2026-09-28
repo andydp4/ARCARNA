@@ -403,7 +403,7 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
       const payload = await getOpsBoard(ctx.orgId, req.user?.id ?? null);
       // No customer phone on the board, for anyone (PRV-04); the address
       // only while a delivery is live, below manager (Q8a).
-      res.json(boardPayloadForViewer(payload, (ctx as { role?: string }).role));
+      res.json(boardPayloadForViewer(payload, (ctx as { role?: string }).role, req.user?.id ?? null));
     } catch (error) {
       console.error("Error building the operations board:", error);
       res.status(500).json({ message: "Failed to load the operations board" });
@@ -425,7 +425,12 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
       const formatted = formatUkPhone(typeof req.body?.phone === "string" ? req.body.phone : "");
       if (!formatted) return res.json({ orderIds: [] });
       const { findBoardOrderIdsByPhone } = await import("../services/opsBoard");
-      res.json({ orderIds: await findBoardOrderIdsByPhone(ctx.orgId, formatted) });
+      res.json({
+        orderIds: await findBoardOrderIdsByPhone(ctx.orgId, formatted, new Date(), {
+          role: (ctx as { role?: string }).role,
+          userId: req.user?.id ?? null,
+        }),
+      });
     } catch (error) {
       console.error("Error searching the board by phone:", error);
       res.status(500).json({ message: "Failed to search the board" });
@@ -2074,6 +2079,9 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
               total: order.total,
               fulfilmentMethod: order.fulfilmentMethod,
               status: order.status,
+              // So Order Audit can list it on the day it was taken, not the day it was deleted.
+              createdAt: order.createdAt ? new Date(order.createdAt).toISOString() : null,
+              inputUserId: order.inputUserId ?? null,
             },
           });
         }

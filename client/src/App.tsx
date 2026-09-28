@@ -53,6 +53,7 @@ const Customers = lazy(() => import("@/pages/customers"));
 const ProductManagement = lazy(() => import("@/pages/product-management"));
 const Settings = lazy(() => import("@/pages/settings"));
 const ReceiptSettingsPage = lazy(() => import("@/pages/settings/receipts"));
+const LabelSettingsPage = lazy(() => import("@/pages/settings/labels"));
 const LoyaltySettingsPage = lazy(() => import("@/pages/settings/loyalty"));
 const WmSuppliesWebsiteSettingsPage = lazy(() => import("@/pages/settings/wm-supplies-website"));
 const DeveloperSettingsPage = lazy(() => import("@/pages/settings/developer"));
@@ -343,6 +344,9 @@ function Router() {
           <Route path="/settings" component={Settings} />
           <Route path="/settings/receipts">
             <RequireRole href="/settings/receipts"><ReceiptSettingsPage /></RequireRole>
+          </Route>
+          <Route path="/settings/labels">
+            <RequireRole href="/settings/labels"><LabelSettingsPage /></RequireRole>
           </Route>
           <Route path="/settings/loyalty">
             <RequireRole href="/settings/loyalty"><LoyaltySettingsPage /></RequireRole>

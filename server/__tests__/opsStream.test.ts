@@ -15,7 +15,16 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-const state = vi.hoisted(() => ({ insertCalls: 0, selectCalls: 0 }));
+const state = vi.hoisted(() => ({ insertCalls: 0, selectCalls: 0, timezone: "Europe/London", timezoneLoads: 0 }));
+
+// The org timezone is its own tiny read (tradingDayShift), made only when a
+// completed card first reaches a viewer below manager — never for an idle stream.
+vi.mock("../services/tradingDayShift", () => ({
+  orgTimeZone: async () => {
+    state.timezoneLoads += 1;
+    return state.timezone;
+  },
+}));
 
 vi.mock("../db", () => ({
   db: {
@@ -274,5 +283,62 @@ describe("org context", () => {
     handler(req, res);
     expect(statusCode).toBe(400);
     expect(body?.message).toBeTruthy();
+  });
+});
+
+describe("entryForViewer — the Done tray's yesterday (Q10a) on the live stream", () => {
+  const card = (who: Record<string, string | null>) =>
+    ({
+      id: "o1",
+      status: "completed",
+      settledAt: "2026-09-11T20:00:00Z", // trading day 09-11
+      inputUserId: "someone-else",
+      completedUserId: "someone-else",
+      assignedUserId: null,
+      fulfilmentMethod: "collection",
+      ...who,
+    }) as any;
+  const entry = (order: any) => ({ id: 1, event: { type: "order", order } }) as any;
+  const viewer = (userId: string) => ({ userId, timezone: "Europe/London", now: new Date("2026-09-12T11:00:00Z") });
+
+  it("does not push another person's earlier-day card to a cashier", async () => {
+    const { entryForViewer } = await import("../routes/opsStream");
+    expect(entryForViewer(entry(card({})), "CASHIER", viewer("me"))).toBeNull();
+    expect(entryForViewer(entry(card({ completedUserId: "me" })), "CASHIER", viewer("me"))).not.toBeNull();
+    expect(entryForViewer(entry(card({})), "MANAGER", viewer("me"))).not.toBeNull();
+    expect(entryForViewer(entry(card({ settledAt: "2026-09-12T09:00:00Z" })), "CASHIER", viewer("me"))).not.toBeNull();
+  });
+});
+
+describe("Q10a on the live stream uses the org's own timezone", () => {
+  it("holds a cashier's completed cards until the timezone loads, then judges them by it", async () => {
+    vi.useFakeTimers({ now: new Date("2026-09-27T12:00:00Z"), toFake: ["Date"] });
+    state.timezone = "America/New_York";
+    state.timezoneLoads = 0;
+    const handler = captureHandler();
+    const conn = fakeConnection(ORG_A, "cashier-me");
+    conn.req.orgContext.role = "CASHIER";
+    handler(conn.req, conn.res);
+    expect(state.timezoneLoads).toBe(0); // idle: no read
+
+    // 07:00Z is 03:00 in New York — the 26th's trading day there (08:00, the 27th's, in London).
+    const card = (id: string, completedUserId: string) => ({
+      id,
+      status: "completed",
+      settledAt: "2026-09-27T07:00:00Z",
+      inputUserId: "someone-else",
+      completedUserId,
+      assignedUserId: null,
+      fulfilmentMethod: "collection",
+    });
+    opsBus.publishOpsEvent(ORG_A, { type: "order", order: card("theirs-yesterday", "someone-else") } as any);
+    opsBus.publishOpsEvent(ORG_A, { type: "order", order: card("mine-yesterday", "cashier-me") } as any);
+    await flushMicrotasks();
+    await flushMicrotasks();
+    expect(state.timezoneLoads).toBe(1);
+    expect(conn.text()).not.toContain("theirs-yesterday");
+    expect(conn.text()).toContain("mine-yesterday");
+    conn.close();
+    state.timezone = "Europe/London";
   });
 });

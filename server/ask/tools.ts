@@ -142,7 +142,7 @@ const INPUTS = {
     .object({ search: z.string().max(80).optional(), status: z.enum(["out", "low", "ok", "any"]).optional() })
     .strict(),
   staff_targets: z.object({}).strict(),
-  draft_order: z.object({ text: z.string().min(1).max(240) }).strict(),
+  draft_order: z.object({ text: z.string().min(1).max(240), customerId: z.string().uuid().optional() }).strict(),
 } as const;
 
 export type AskToolName = keyof typeof INPUTS;
@@ -236,10 +236,16 @@ export const ASK_TOOLS: Anthropic.Beta.BetaTool[] = [
   {
     name: "draft_order",
     description:
-      "Starts an order from a plain request ('create an order for Bunny, 50 Product 1, for tomorrow'). Resolves the customer and products against the shop's real records and opens a draft in the till — it never saves an order itself; the till still prices it, checks stock and takes payment. Every role. Rewrite the request into `text` in exactly this shape before calling: '<Customer name, or Walk-in> wants <quantity> <product name>[ and <quantity> <product name>...][, for today/tomorrow/<weekday>].' e.g. 'Bunny wants 50 Product 1 and 2 Coke, for tomorrow.' If the person did not name a customer, use 'Walk-in'. If a product or quantity is unclear, ask them rather than guessing one. Each call is independent — nothing from an earlier call is remembered — so if the result comes back not ready (something unclear or missing), ask the person for it, then call again with the WHOLE order restated, not just the missing part.",
+      "Starts an order from a plain request ('create an order for Bunny, 50 Product 1, for tomorrow'). Resolves the customer and products against the shop's real records and opens a draft in the till — it never saves an order itself; the till still prices it, checks stock and takes payment. Every role. Rewrite the request into `text` in exactly this shape before calling: '<Customer name, or Walk-in> wants <quantity> <product name>[ and <quantity> <product name>...][, for today/tomorrow/<weekday>].' e.g. 'Bunny wants 50 Product 1 and 2 Coke, for tomorrow.' If the person did not name a customer, use 'Walk-in'. If a product or quantity is unclear, ask them rather than guessing one. Each call is independent — nothing from an earlier call is remembered — so if the result comes back not ready (something unclear or missing), ask the person for it, then call again with the WHOLE order restated, not just the missing part. If the result lists `customers` (more than one matches the name), ask the person which one they mean, then call again with the same text plus that customer's `customerId`. If the customer's name is not recognised, ask them to check it; if they are sure, use 'Walk-in' and the cashier picks the customer in the till.",
     input_schema: {
       type: "object",
-      properties: { text: { type: "string", description: "The request, rewritten into the shape above." } },
+      properties: {
+        text: { type: "string", description: "The request, rewritten into the shape above." },
+        customerId: {
+          type: "string",
+          description: "Only after a result listed `customers`: the id of the one the person chose.",
+        },
+      },
       required: ["text"],
       additionalProperties: false,
     },
@@ -438,14 +444,36 @@ async function run(name: AskToolName, input: any, ctx: AskToolContext): Promise<
       // product) or comes back asking for whatever was unclear — never guessed.
       const { runAssistantTurn } = await import("../assistant/engine");
       const { tillDraftFrom } = await import("../assistant/quickEntry");
-      const result = await runAssistantTurn(ctx.orgId, null, String(input.text));
+      let customer: { id: string; name: string } | undefined;
+      if (input.customerId) {
+        const { db } = await import("../db");
+        const { customers } = await import("@shared/schema");
+        const { and, eq } = await import("drizzle-orm");
+        const [row] = await db
+          .select({ id: customers.id, name: customers.name })
+          .from(customers)
+          .where(and(eq(customers.id, input.customerId), eq(customers.orgId, ctx.orgId)))
+          .limit(1);
+        if (!row) {
+          return { content: JSON.stringify({ ready: false, message: "That is not one of this shop's customers. Ask who the order is for." }) };
+        }
+        customer = row;
+      }
+      const result = await runAssistantTurn(ctx.orgId, null, String(input.text), { customer });
       if (result.draft?.status === "confirming") {
         return {
           content: JSON.stringify({ ready: true, message: "Opened in the till for the cashier to price and take payment." }),
           tillDraft: tillDraftFrom(result.draft),
         };
       }
-      return { content: JSON.stringify({ ready: false, message: result.message, missingFields: result.missingFields }) };
+      // Several customers share the name: hand back who they are (name and id
+      // only, the same as the till's own pick list) so the next call can say
+      // which one with customerId.
+      const choices =
+        result.draft?.status === "choosing-customer" && result.draft.customerCandidates?.length
+          ? { customers: result.draft.customerCandidates.map((c) => ({ id: c.id, name: c.name })) }
+          : {};
+      return { content: JSON.stringify({ ready: false, message: result.message, missingFields: result.missingFields, ...choices }) };
     }
   }
 }

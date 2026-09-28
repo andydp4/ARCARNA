@@ -13,6 +13,14 @@
  * is the label that goes out with a driver, who needs the phone and postcode
  * to find the door — an explicit owner call, not an oversight.
  */
+import {
+  DEFAULT_LABEL_SETTINGS,
+  type DeliveryNoteLabelFields,
+  type OrderInfoLabelFields,
+  type OrderLabelFields,
+  type PackagingLabelFields,
+  type ProductLabelFields,
+} from "@shared/labelSettings";
 import { encode as encodeQr } from "uqr";
 import type { BarcodeSymbol } from "./barcode";
 import { barcodeForProduct } from "./barcode";
@@ -208,6 +216,7 @@ export function buildOrderLabel(
   qrPayload: string,
   measure: Measure,
   geometry: LabelGeometry = B1_GEOMETRY,
+  fields: OrderLabelFields = DEFAULT_LABEL_SETTINGS.order,
 ): LabelSpec {
   const { width: W, height: H, dotsPerMm } = geometry;
   const s = dotsPerMm / 8; // layout is designed at 8 dots/mm
@@ -221,7 +230,7 @@ export function buildOrderLabel(
   const qr = encodeQr(qrPayload, { ecc: "M", border: 0 });
   const qrScale = Math.min(Math.floor(d(152) / qr.size), Math.floor((H - 2 * margin) / qr.size));
   let textRight = W - margin;
-  if (qrScale >= 3) {
+  if (fields.qr && qrScale >= 3) {
     const qrPx = qr.size * qrScale;
     const qrX = W - margin - qrPx;
     items.push({ kind: "qr", x: qrX, y: Math.round((H - qrPx) / 2), scale: qrScale, modules: qr.data, payload: qrPayload });
@@ -236,26 +245,34 @@ export function buildOrderLabel(
   items.push({ kind: "text", x: margin, y, text: code.text, size: code.size, bold: true, maxWidth: colW, align: "left" });
   y += Math.round(code.size * LINE);
 
-  const name = fitText(input.customerName?.trim() || "Walk-in", colW, { max: d(30), min: d(18), bold: true }, measure);
-  items.push({ kind: "text", x: margin, y, text: name.text, size: name.size, bold: true, maxWidth: colW, align: "left" });
-  y += Math.round(name.size * LINE) + d(4);
+  if (fields.customerName) {
+    const name = fitText(input.customerName?.trim() || "Walk-in", colW, { max: d(30), min: d(18), bold: true }, measure);
+    items.push({ kind: "text", x: margin, y, text: name.text, size: name.size, bold: true, maxWidth: colW, align: "left" });
+    y += Math.round(name.size * LINE) + d(4);
+  }
 
-  // Delivery/Collection as a solid block: readable at arm's length on a shelf.
-  const methodText = input.fulfilmentMethod === "delivery" ? "DELIVERY" : "COLLECTION";
-  const pad = d(4);
-  const method = fitText(methodText, colW - 2 * pad, { max: d(24), min: d(16), bold: true }, measure);
-  const boxW = Math.min(colW, Math.ceil(measure(method.text, method.size, true)) + 2 * pad);
-  const boxH = Math.round(method.size * LINE) + pad;
-  items.push({ kind: "rect", x: margin, y, w: boxW, h: boxH });
-  items.push({ kind: "text", x: margin + pad, y: y + Math.round(pad / 2), text: method.text, size: method.size, bold: true, maxWidth: colW - 2 * pad, align: "left", inverse: true });
-  y += boxH + d(6);
+  if (fields.fulfilment) {
+    // Delivery/Collection as a solid block: readable at arm's length on a shelf.
+    const methodText = input.fulfilmentMethod === "delivery" ? "DELIVERY" : "COLLECTION";
+    const pad = d(4);
+    const method = fitText(methodText, colW - 2 * pad, { max: d(24), min: d(16), bold: true }, measure);
+    const boxW = Math.min(colW, Math.ceil(measure(method.text, method.size, true)) + 2 * pad);
+    const boxH = Math.round(method.size * LINE) + pad;
+    items.push({ kind: "rect", x: margin, y, w: boxW, h: boxH });
+    items.push({ kind: "text", x: margin + pad, y: y + Math.round(pad / 2), text: method.text, size: method.size, bold: true, maxWidth: colW - 2 * pad, align: "left", inverse: true });
+    y += boxH + d(6);
+  }
 
-  const due = fitText(input.dueText ? `Due ${input.dueText}` : "No due time", colW, { max: d(26), min: d(16), bold: true }, measure);
-  items.push({ kind: "text", x: margin, y, text: due.text, size: due.size, bold: true, maxWidth: colW, align: "left" });
-  y += Math.round(due.size * LINE);
+  if (fields.due) {
+    const due = fitText(input.dueText ? `Due ${input.dueText}` : "No due time", colW, { max: d(26), min: d(16), bold: true }, measure);
+    items.push({ kind: "text", x: margin, y, text: due.text, size: due.size, bold: true, maxWidth: colW, align: "left" });
+    y += Math.round(due.size * LINE);
+  }
 
-  const count = fitText(itemCountText(input.itemCount), colW, { max: d(22), min: d(16), bold: false }, measure);
-  items.push({ kind: "text", x: margin, y, text: count.text, size: count.size, bold: false, maxWidth: colW, align: "left" });
+  if (fields.itemCount) {
+    const count = fitText(itemCountText(input.itemCount), colW, { max: d(22), min: d(16), bold: false }, measure);
+    items.push({ kind: "text", x: margin, y, text: count.text, size: count.size, bold: false, maxWidth: colW, align: "left" });
+  }
 
   return { geometry, items };
 }
@@ -279,7 +296,12 @@ export function barcodeModuleDots(symbol: BarcodeSymbol, available: number): num
   return Math.floor(available / (symbol.modules.length + 20));
 }
 
-export function buildProductLabel(input: ProductLabelInput, measure: Measure, geometry: LabelGeometry = B1_GEOMETRY): LabelSpec {
+export function buildProductLabel(
+  input: ProductLabelInput,
+  measure: Measure,
+  geometry: LabelGeometry = B1_GEOMETRY,
+  fields: ProductLabelFields = DEFAULT_LABEL_SETTINGS.product,
+): LabelSpec {
   const { width: W, height: H, dotsPerMm } = geometry;
   const s = dotsPerMm / 8;
   const d = (n: number) => Math.round(n * s);
@@ -287,12 +309,12 @@ export function buildProductLabel(input: ProductLabelInput, measure: Measure, ge
   const colW = W - 2 * margin;
   const items: LabelItem[] = [];
 
-  const symbol = barcodeForProduct(input.barcode);
+  const symbol = fields.barcode ? barcodeForProduct(input.barcode) : null;
   // Two dots (0.25 mm) is the narrowest bar a till scanner reads reliably
   // off this head; a code too long for that is printed as text only.
   const moduleDots = symbol ? barcodeModuleDots(symbol, colW) : 0;
   const bars = symbol && moduleDots >= 2 ? symbol : null;
-  const codeText = symbol?.text ?? (input.barcode?.trim() || null);
+  const codeText = fields.barcode ? symbol?.text ?? (input.barcode?.trim() || null) : null;
 
   // Bottom block first, so the name and price get whatever is left.
   let bottom = H - margin;
@@ -312,7 +334,7 @@ export function buildProductLabel(input: ProductLabelInput, measure: Measure, ge
 
   let y = margin;
   const price = fitText(formatLabelPrice(input.salePrice, input.currencySymbol), colW, { max: codeText ? d(44) : d(64), min: d(24), bold: true }, measure);
-  const room = bottom - y - Math.round(price.size * LINE);
+  const room = bottom - y - (fields.price ? Math.round(price.size * LINE) : 0);
   const nameMax = codeText ? d(28) : d(34);
   const maxLines = Math.max(1, Math.min(2, Math.floor(room / Math.round(d(20) * LINE))));
   const name = wrapText(input.name || "Product", colW, maxLines, { max: nameMax, min: d(18), bold: true }, measure);
@@ -320,7 +342,9 @@ export function buildProductLabel(input: ProductLabelInput, measure: Measure, ge
     items.push({ kind: "text", x: margin, y, text: line, size: name.size, bold: true, maxWidth: colW, align: "left" });
     y += Math.round(name.size * LINE);
   }
-  items.push({ kind: "text", x: margin, y, text: price.text, size: price.size, bold: true, maxWidth: colW, align: "left" });
+  if (fields.price) {
+    items.push({ kind: "text", x: margin, y, text: price.text, size: price.size, bold: true, maxWidth: colW, align: "left" });
+  }
 
   return { geometry, items };
 }
@@ -405,6 +429,7 @@ export function buildOrderInfoLabel(
   input: OrderInfoInput,
   measure: Measure,
   geometry: LabelGeometry = B1_GEOMETRY,
+  fields: OrderInfoLabelFields = DEFAULT_LABEL_SETTINGS.orderInfo,
 ): LabelSpec {
   const { width: W, height: H, dotsPerMm } = geometry;
   const s = dotsPerMm / 8;
@@ -418,24 +443,30 @@ export function buildOrderInfoLabel(
   items.push({ kind: "text", x: margin, y, text: code.text, size: code.size, bold: true, maxWidth: colW, align: "left" });
   y += Math.round(code.size * LINE) + d(2);
 
-  const name = fitText(input.customerName?.trim() || "Walk-in", colW, { max: d(22), min: d(16), bold: true }, measure);
-  items.push({ kind: "text", x: margin, y, text: name.text, size: name.size, bold: true, maxWidth: colW, align: "left" });
-  y += Math.round(name.size * LINE) + d(4);
+  if (fields.customerName) {
+    const name = fitText(input.customerName?.trim() || "Walk-in", colW, { max: d(22), min: d(16), bold: true }, measure);
+    items.push({ kind: "text", x: margin, y, text: name.text, size: name.size, bold: true, maxWidth: colW, align: "left" });
+    y += Math.round(name.size * LINE) + d(4);
+  }
 
-  const methodText = input.fulfilmentMethod === "delivery" ? "DELIVERY" : "COLLECTION";
-  const pad = d(4);
-  const method = fitText(methodText, colW - 2 * pad, { max: d(20), min: d(15), bold: true }, measure);
-  const boxW = Math.min(colW, Math.ceil(measure(method.text, method.size, true)) + 2 * pad);
-  const boxH = Math.round(method.size * LINE) + pad;
-  items.push({ kind: "rect", x: margin, y, w: boxW, h: boxH });
-  items.push({
-    kind: "text", x: margin + pad, y: y + Math.round(pad / 2), text: method.text, size: method.size,
-    bold: true, maxWidth: colW - 2 * pad, align: "left", inverse: true,
-  });
-  y += boxH + d(6);
+  if (fields.fulfilment) {
+    const methodText = input.fulfilmentMethod === "delivery" ? "DELIVERY" : "COLLECTION";
+    const pad = d(4);
+    const method = fitText(methodText, colW - 2 * pad, { max: d(20), min: d(15), bold: true }, measure);
+    const boxW = Math.min(colW, Math.ceil(measure(method.text, method.size, true)) + 2 * pad);
+    const boxH = Math.round(method.size * LINE) + pad;
+    items.push({ kind: "rect", x: margin, y, w: boxW, h: boxH });
+    items.push({
+      kind: "text", x: margin + pad, y: y + Math.round(pad / 2), text: method.text, size: method.size,
+      bold: true, maxWidth: colW - 2 * pad, align: "left", inverse: true,
+    });
+    y += boxH + d(6);
+  }
 
-  const pay = fitText(`Pay: ${input.paymentMethodText}`, colW, { max: d(20), min: d(14), bold: false }, measure);
-  items.push({ kind: "text", x: margin, y, text: pay.text, size: pay.size, bold: false, maxWidth: colW, align: "left" });
+  if (fields.payment) {
+    const pay = fitText(`Pay: ${input.paymentMethodText}`, colW, { max: d(20), min: d(14), bold: false }, measure);
+    items.push({ kind: "text", x: margin, y, text: pay.text, size: pay.size, bold: false, maxWidth: colW, align: "left" });
+  }
 
   return { geometry, items };
 }
@@ -456,6 +487,7 @@ export function buildPackagingLabel(
   input: PackagingLabelInput,
   measure: Measure,
   geometry: LabelGeometry = B1_GEOMETRY,
+  fields: PackagingLabelFields = DEFAULT_LABEL_SETTINGS.packaging,
 ): LabelSpec {
   const { width: W, height: H, dotsPerMm } = geometry;
   const s = dotsPerMm / 8;
@@ -464,7 +496,7 @@ export function buildPackagingLabel(
   const colW = W - 2 * margin;
   const items: LabelItem[] = [];
 
-  const codeSize = d(14);
+  const codeSize = fields.orderCode ? d(14) : 0;
   const name = wrapText(input.customerName?.trim() || "Walk-in", colW, 2, { max: d(40), min: d(20), bold: true }, measure);
   const blockH = name.lines.length * Math.round(name.size * LINE);
   let y = Math.max(margin, Math.round((H - blockH - Math.round(codeSize * LINE) - margin) / 2));
@@ -473,11 +505,13 @@ export function buildPackagingLabel(
     y += Math.round(name.size * LINE);
   }
 
-  const code = fitText(`#${input.shortCode}`, colW, { max: codeSize, min: d(11), bold: false }, measure);
-  items.push({
-    kind: "text", x: margin, y: H - margin - Math.round(code.size * LINE), text: code.text, size: code.size,
-    bold: false, maxWidth: colW, align: "center",
-  });
+  if (fields.orderCode) {
+    const code = fitText(`#${input.shortCode}`, colW, { max: codeSize, min: d(11), bold: false }, measure);
+    items.push({
+      kind: "text", x: margin, y: H - margin - Math.round(code.size * LINE), text: code.text, size: code.size,
+      bold: false, maxWidth: colW, align: "center",
+    });
+  }
 
   return { geometry, items };
 }
@@ -506,6 +540,7 @@ export function buildDeliveryNoteLabel(
   input: DeliveryNoteInput,
   measure: Measure,
   geometry: LabelGeometry = B1_GEOMETRY,
+  fields: DeliveryNoteLabelFields = DEFAULT_LABEL_SETTINGS.deliveryNote,
 ): LabelSpec {
   const { width: W, height: H, dotsPerMm } = geometry;
   const s = dotsPerMm / 8;
@@ -514,7 +549,7 @@ export function buildDeliveryNoteLabel(
   const items: LabelItem[] = [];
 
   let textRight = W - margin;
-  if (input.payLinkUrl) {
+  if (fields.payQr && input.payLinkUrl) {
     const qr = encodeQr(input.payLinkUrl, { ecc: "M", border: 0 });
     const qrScale = Math.min(Math.floor(d(120) / qr.size), Math.floor((H - 2 * margin) / qr.size));
     if (qrScale >= 3) {
@@ -537,13 +572,13 @@ export function buildDeliveryNoteLabel(
   items.push({ kind: "text", x: margin, y, text: name.text, size: name.size, bold: true, maxWidth: colW, align: "left" });
   y += Math.round(name.size * LINE) + d(2);
 
-  if (input.phone) {
+  if (fields.phone && input.phone) {
     const phone = fitText(input.phone, colW, { max: d(17), min: d(13), bold: false }, measure);
     items.push({ kind: "text", x: margin, y, text: phone.text, size: phone.size, bold: false, maxWidth: colW, align: "left" });
     y += Math.round(phone.size * LINE);
   }
 
-  const addr = [input.address, input.postcode].filter((v) => v?.trim()).join(", ");
+  const addr = fields.address ? [input.address, input.postcode].filter((v) => v?.trim()).join(", ") : "";
   if (addr) {
     const wrapped = wrapText(addr, colW, 2, { max: d(16), min: d(12), bold: false }, measure);
     for (const line of wrapped.lines) {
@@ -552,8 +587,10 @@ export function buildDeliveryNoteLabel(
     }
   }
 
-  const pay = fitText(`Pay: ${input.paymentMethodText}`, colW, { max: d(16), min: d(12), bold: false }, measure);
-  items.push({ kind: "text", x: margin, y, text: pay.text, size: pay.size, bold: false, maxWidth: colW, align: "left" });
+  if (fields.payment) {
+    const pay = fitText(`Pay: ${input.paymentMethodText}`, colW, { max: d(16), min: d(12), bold: false }, measure);
+    items.push({ kind: "text", x: margin, y, text: pay.text, size: pay.size, bold: false, maxWidth: colW, align: "left" });
+  }
 
   return { geometry, items };
 }

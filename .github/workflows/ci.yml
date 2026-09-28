@@ -366,6 +366,9 @@ jobs:
             server/__tests__/truthsLayout.test.ts \
             server/__tests__/cardLinks.test.ts \
             server/__tests__/myRun.test.ts \
+            server/__tests__/rotaRoutes.test.ts \
+            server/__tests__/orderAuditRoutes.test.ts \
+            server/__tests__/labelSettingsRoutes.test.ts \
             server/__tests__/askArcarna.test.ts \
             server/__tests__/reconcileFigures.test.ts \
             server/__tests__/refundMoneyRules.test.ts \

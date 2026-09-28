@@ -711,6 +711,8 @@ export function navGroupLabelForHref(href: string): string | undefined {
 const EXTRA_ROUTE_ROLES: Record<string, readonly Role[]> = {
   // server/routes/receipts.ts: PUT /api/receipts/settings requires MANAGER+.
   '/settings/receipts': MANAGER_ROLES,
+  // server/routes/labels.ts: PUT /api/labels/settings requires MANAGER+.
+  '/settings/labels': MANAGER_ROLES,
   // server/routes/loyalty.ts: PUT /api/loyalty/settings requires MANAGER+.
   '/settings/loyalty': MANAGER_ROLES,
   // Reached only from a link on the (MANAGER+-gated) Promotions page.

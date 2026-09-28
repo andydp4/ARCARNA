@@ -37,11 +37,9 @@ export interface OpsBoardProps {
   /**
    * The trading-day-bounded count from the server's own `summary` field
    * (server/services/opsBoard.ts's `countCompletedToday`) — NOT derived from
-   * `orders` here, which only ever holds open orders plus whatever completed
-   * within the last `RECENT_COMPLETED_MINUTES`. That cutoff exists to keep
-   * card rendering cheap; a count meant to cover the whole trading day can't
-   * be built from a list that already dropped everything older than two
-   * hours.
+   * `orders` here, which holds open orders plus completed ones since the
+   * start of yesterday's trading day (and, below manager, only your own from
+   * yesterday — Q10a), so it is neither today alone nor everyone's.
    */
   completedToday: number;
   /**
@@ -293,7 +291,9 @@ export function OpsBoard({
             lane={lane}
             cards={visible.filter((card) => card.order.fulfilmentMethod === lane)}
             filtered={filtered}
-            searchActive={search.trim().length > 0}
+            // One stray keystroke should not unfold every Done tray and strip on the
+            // counter tablet; a search starts meaning something at two characters.
+            searchActive={search.trim().length >= 2}
             expandStrips={expandStripsLane === lane}
             pendingIds={pendingIds}
             isAlertForOrder={isAlertForOrder}

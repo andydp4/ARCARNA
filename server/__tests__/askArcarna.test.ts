@@ -284,6 +284,38 @@ describe.skipIf(!hasDb)("Ask arcarna: tools inside the role, the route, the audi
     expect(r.tillDraft).toBeUndefined();
   });
 
+  it("draft_order: two customers with one name are listed with ids, and a chosen id finishes the order", async () => {
+    const twins = await db
+      .insert(schema.customers)
+      .values([
+        { orgId, name: "Twin Canary" },
+        { orgId, name: "Twin Canary" },
+      ])
+      .returning();
+    const first = await tools.executeAskTool("draft_order", { text: "Twin Canary wants 2 Canary Widget" }, ctxFor("CASHIER"));
+    const body = JSON.parse(first.content);
+    expect(body.ready).toBe(false);
+    expect(body.customers.map((c: any) => c.id).sort()).toEqual(twins.map((t: any) => t.id).sort());
+    expect(JSON.stringify(body.customers)).not.toMatch(/phone|email|address/);
+
+    const chosen = await tools.executeAskTool(
+      "draft_order",
+      { text: "Twin Canary wants 2 Canary Widget", customerId: twins[1].id },
+      ctxFor("CASHIER"),
+    );
+    expect(JSON.parse(chosen.content)).toMatchObject({ ready: true });
+    expect(chosen.tillDraft).toMatchObject({ customerId: twins[1].id, items: [{ name: "Canary Widget", quantity: 2 }] });
+
+    // Another shop's customer (or any unknown id) is refused, not used.
+    const stranger = await tools.executeAskTool(
+      "draft_order",
+      { text: "Twin Canary wants 2 Canary Widget", customerId: randomUUID() },
+      ctxFor("CASHIER"),
+    );
+    expect(JSON.parse(stranger.content)).toMatchObject({ ready: false });
+    expect(stranger.tillDraft).toBeUndefined();
+  });
+
   it("an unknown tool or a bad input is an error result, not a crash", async () => {
     expect((await tools.executeAskTool("delete_everything", {}, ctxFor("SUPER_ADMIN"))).isError).toBe(true);
     expect((await tools.executeAskTool("run_evidence", { ref: "DROP TABLE" }, ctxFor("SUPER_ADMIN"))).isError).toBe(true);

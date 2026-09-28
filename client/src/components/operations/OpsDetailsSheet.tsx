@@ -28,7 +28,7 @@ import { OpsRateChips } from "./OpsRateChips";
 import { OpsCustomerCall } from "./OpsCustomerCall";
 import { OrderLabelPrintPanel } from "@/components/labels/OrderLabelPrintPanel";
 import { orderDueText } from "@/lib/labels/labelRequests";
-import { deriveCardState } from "@shared/orders/opsState";
+import { deriveCardState, settledBeforeToday } from "@shared/orders/opsState";
 import { isAtLeast } from "@shared/accessPolicy";
 import { CREDIT_MIN_ROLE } from "@shared/creditPolicy";
 
@@ -174,7 +174,11 @@ function OpsDetailsBody({
   const [copied, setCopied] = useState<string>("");
   const [downloading, setDownloading] = useState<"receipt" | "invoice" | null>(null);
   const [labelsOpen, setLabelsOpen] = useState(false);
-  const canEditOrDelete = role !== "CASHIER";
+  // Yesterday's completed orders in the Done tray are read-only from the board
+  // (the card's own menu is too — OpsCardActions): no status change, edit or
+  // delete on a day that is over. A past day's sale is corrected with a refund.
+  const fromPreviousDay = order.status === "completed" && settledBeforeToday(order.settledAt, settings.timezone, new Date());
+  const canEditOrDelete = role !== "CASHIER" && !fromPreviousDay;
   const canSeeInvoices = isAtLeast(role, CREDIT_MIN_ROLE);
 
   const { data: detail, isLoading } = useQuery<OrderDetail>({
@@ -312,11 +316,16 @@ function OpsDetailsBody({
         <OrderStatusSelect
           status={order.status}
           onChange={(status) => onStatusChange(order, status)}
-          disabled={statusPending || Boolean(blockedReason)}
+          disabled={statusPending || Boolean(blockedReason) || fromPreviousDay}
           label={`order #${order.shortCode}`}
           data-testid={`select-order-status-${order.id}`}
         />
         {blockedReason && <p className="text-sm text-muted-foreground">{blockedReason}</p>}
+        {fromPreviousDay && !blockedReason && (
+          <p className="text-sm text-muted-foreground" data-testid="ops-details-previous-day">
+            Completed on an earlier trading day, so it can't be edited here. To correct it, use Issue refund.
+          </p>
+        )}
       </div>
 
       <OpsTimeline order={order} settings={settings} />

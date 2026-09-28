@@ -85,7 +85,8 @@
   </table>
   <p>Under each lane are three folded strips: <span class="ui">Earlier days — still open</span>,
      <span class="ui">Scheduled</span> (pre-orders for a later day) and <span class="ui">Done</span>
-     (orders finished in the last 36 hours, so yesterday's work is still there to check back on).</p>
+     (orders finished today and yesterday, so yesterday's work is still there to check back on).</p>
+  <p>In <span class="ui">Done</span>, today's orders come first; yesterday's sit under a <span class="ui">Yesterday</span> heading. Yesterday's cards are there to look back at — they have no <span class="ui">Undo</span>, <span class="ui">Edit lines</span>, <span class="ui">Delete</span> or status change, on the card or in its details. To correct a sale from a past day, open its details and use <span class="ui">Issue refund</span>. A <span class="role role-cashier">CASHIER</span> sees everyone's orders from today, but from yesterday only the ones they keyed in, took or completed; managers and admins see everyone's. A busy tray shows 50 cards at a time, with <span class="ui">Show more</span> under them. Typing two or more characters in the search opens the folded strips so a match inside them is not hidden.</p>
 
   <h3>What a card shows</h3>
   <table>
@@ -171,7 +172,7 @@
     <tr><td><span class="ui">Receipt</span></td><td>Downloads the receipt PDF to hand or send to the customer.</td></tr>
     <tr class="ed-manager"><td><span class="ui">Invoice</span></td><td>Managers and admins: downloads the invoice PDF (see below).</td></tr>
     <tr><td><span class="ui">Issue refund</span></td><td>Starts a refund (see below).</td></tr>
-    <tr><td><span class="ui">Print label</span></td><td>Prints an order label (see below).</td></tr>
+    <tr><td><span class="ui">Print labels</span></td><td>Prints the order's labels, or any one of them again (see below).</td></tr>
   </table>
   <p>For a delivery, the details also hold the address, the driver's call and a way to correct the
      address. Those are covered in Section 5.</p>
@@ -278,25 +279,27 @@
   </div>
 
   <p class="eyebrow">Labels</p>
-  <h2>Printing an order label</h2>
-  <p>arcarna prints 50 × 30 mm labels on a Niimbot B1 label printer over Bluetooth. An order label
-     carries the order code, the customer's name only, collection or delivery, the due time, the number
-     of items and a QR code that opens the order. It never carries a phone number.</p>
-  <ol class="steps">
-    <li>Open the order's details and select <span class="ui">Print label</span>. A preview of the label
-        appears, exactly as it will print.</li>
-    <li>Under the preview, a line says whether a printer is connected, for example
-        <em>Connected to B1-… · battery 80%</em>.</li>
-    <li>Set <span class="ui">Copies</span> if you need more than one, then select
-        <span class="ui">Print</span>. The first time, the browser asks you to choose the printer.</li>
-    <li>Select <span class="ui">Hide label</span> when you are done.</li>
-  </ol>
-
-  <figure>
-    <img src="../images/v12-04-label.png" alt="The order details with the label preview open, the printer status line, Copies and Print" />
-    <figcaption>Print label: the preview shows exactly what the printer will produce.</figcaption>
-    <!-- SHOT: route=/operations ; role=cashier ; viewport=desktop ; show=the details sheet scrolled to the bottom with Print label expanded: the 50 × 30 mm label preview (order code, customer name, Collection, due time, items, QR code), the printer status line, Copies and the Print button ; state=View opened on an open collection order for a fictional customer with a due time; no printer needs to be connected (the line will read "No printer connected on this device yet"). The Copies and Print controls only show when the browser has Web Bluetooth; headless Chromium may show the "Bluetooth is turned off or blocked in this browser" notice instead (launch with Web Bluetooth enabled, or capture the notice and change the alt text and caption to match). The preview renders either way -->
-  </figure>
+  <h2>Printing an order's labels</h2>
+  <p>arcarna prints 50 × 30 mm labels on a Niimbot B1 label printer over Bluetooth. An order has up to five labels:</p>
+  <table>
+    <tr><th>Label</th><th>What it is for</th></tr>
+    <tr><td><strong>Order label</strong></td><td>On the order: its code, the customer's name, collection or delivery, the due time, the number of items and a QR code that opens the order on the board.</td></tr>
+    <tr><td><strong>Picking list</strong></td><td>Each line's stock number and quantity. A long order runs onto more than one label, numbered 1/2, 2/2.</td></tr>
+    <tr><td><strong>Type &amp; payment</strong></td><td>Collection or delivery, and how it was paid.</td></tr>
+    <tr><td><strong>Packaging</strong></td><td>Straight on the bag: the customer's name, big.</td></tr>
+    <tr><td><strong>Delivery note</strong></td><td>Deliveries only, and leaves with the driver: name, phone, address and, when a card link is open, a "Scan to pay" QR code. It is the only label that ever carries a phone number or address.</td></tr>
+  </table>
+  <p>Which of these <span class="ui">Print labels</span> prints, and what goes on each, is set once for the shop by a manager (<span class="ui">Settings › Labels</span>). There are three ways to print them:</p>
+  <ul>
+    <li><strong>From the board:</strong> every card, including those in <span class="ui">Done</span>, has a <span class="ui">Labels</span> button next to <span class="ui">View</span>. One tap prints the order's labels; a message says how many printed.</li>
+    <li><strong>From the till:</strong> straight after a sale is paid, a <em>Last sale #… · Print labels</em> strip appears above the order form. If the shop has turned on automatic printing and this till's printer is already connected, the labels print by themselves.</li>
+    <li><strong>From the order's details:</strong> <span class="ui">Print labels</span> opens the label buttons: <span class="ui">Print labels</span> for the set, or any one label on its own to reprint it.</li>
+  </ul>
+  <p>The first time on a device, the browser asks you to choose the printer. If nothing prints, the message says why in plain words, for example that no printer was chosen.</p>
+  <div class="callout ed-manager">
+    <strong>Changing what the labels show <span class="role role-manager">MANAGER</span></strong>
+    In <span class="ui">Settings › System</span>, on the <em>Devices · Label printer</em> card, select <span class="ui">Open label template editor</span>. Each label type has switches for what goes on it and whether one tap prints it, a live preview, and <span class="ui">Test print</span>. You can also turn on <span class="ui">Print the labels automatically after payment</span>. <span class="ui">Save</span> applies it to every till.
+  </div>
 
   <table>
     <tr><th>Device</th><th>Can it print?</th></tr>
