@@ -31,6 +31,7 @@
  * omitted) is unchanged, because a standalone form's container is the
  * viewport.
  */
+import { TillLastSaleLabels } from "@/components/labels/TillLastSaleLabels";
 import { deliveryOrderFields, EMPTY_POS_DELIVERY, type PosDeliveryState } from "@/components/pos-delivery-details";
 import { PosDeliveryFee, effectiveDeliveryFee } from "@/components/pos-delivery-fee";
 import { DELIVERY_FEE_NAME_DEFAULT, DELIVERY_FEE_PRICE_DEFAULT, readDeliveryFee } from "@shared/orders/deliveryFee";
@@ -285,6 +286,8 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
     staleTime: 5 * 60_000,
   });
   const [cardLinkSale, setCardLinkSale] = useState<CardLinkSale | null>(null);
+  /** The sale just taken, for "Print labels" on the till (cleared by its own close button, replaced by the next sale). */
+  const [lastSaleId, setLastSaleId] = useState<string | null>(null);
   const { data: posLocations = [] } = useQuery<LocationPickerOption[]>({
     queryKey: ["/api/locations"],
   });
@@ -652,6 +655,8 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
 
       if (createdOrderId && !data?.offline) {
         embedded?.onPlaced(createdOrderId);
+        // "Last sale · Print labels" (and auto-print, when the shop turned it on).
+        setLastSaleId(createdOrderId);
       }
 
       if (editingIssue) {
@@ -1412,6 +1417,7 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
                 <MyShiftSummary />
               </div>
             )}
+            {lastSaleId && <TillLastSaleLabels key={lastSaleId} orderId={lastSaleId} onDismiss={() => setLastSaleId(null)} />}
             {editingIssue && (
               <div
                 className="mx-4 mt-2 shrink-0 rounded-lg border border-metal-edge px-3 py-2 text-xs sm:mx-6"

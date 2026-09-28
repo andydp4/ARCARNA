@@ -206,6 +206,21 @@
   </ol>
   <p>Next time, the button reads <span class="ui">Connect</span>. <span class="ui">Forget this printer</span> removes the pairing from this device.</p>
 
+  <h3>Label templates <span class="role role-manager">MANAGER</span></h3>
+  <p>What goes on each label is the same on every till, and set once for the shop. On the <span class="ui">Devices · Label printer</span> card, managers and above see <span class="ui">Open label template editor</span>, which opens <span class="ui">Settings › Labels</span>.</p>
+  <ol class="steps">
+    <li>Under <span class="ui">Printing</span>, turn on <span class="ui">Print the labels automatically after payment</span> if you want each till to print an order's labels as soon as it is paid. It only happens on a till whose printer is already connected; otherwise the till shows a <span class="ui">Print labels</span> button instead.</li>
+    <li>Each label type has its own card with a live preview, drawn exactly as the printer will print it, from a made-up sample order. <span class="ui">Include in “Print labels”</span> decides whether one tap prints it; the switches under it decide what goes on it (for example the QR code, the due time, or the phone number on a Delivery note).</li>
+    <li>The order number is always printed, so any label can be traced back to its order. If every type is switched off, <span class="ui">Print labels</span> still prints the Order label.</li>
+    <li><span class="ui">Test print</span> prints the sample, as the switches on screen stand, so you can check it before saving.</li>
+    <li>Select <span class="ui">Save</span>. Every till prints with the new settings from then on. <span class="ui">Reset to defaults</span> puts every switch back to how labels printed originally.</li>
+  </ol>
+  <figure>
+    <img src="../images/v12-11-label-templates.png" alt="Settings, Labels: the Delivery note card with its switches for phone, address, payment and the Scan to pay QR code, beside a preview of the label" />
+    <figcaption>Label templates: switch details on or off and see the label change beside them.</figcaption>
+    <!-- SHOT: route=/settings/labels ; role=manager ; viewport=desktop ; show=the Delivery note card: "Include in Print labels" and the four switches on the left, the label preview (sample order 0a1b2c3d, Priya Shah) on the right ; state=default label settings; tours marked seen -->
+  </figure>
+
   <h3>Naming each device</h3>
   <p>The <span class="ui">This device</span> card names the device from a fixed list: <span class="ui">Till 1</span> to <span class="ui">Till 6</span>, <span class="ui">Counter tablet</span>, and <span class="ui">Phone 1</span> to <span class="ui">Phone 6</span>. The name goes with every Problem? report and error report, so you know which device had the trouble. There is no free-text name, because a typed name could be a person's. Staff can also set it the first time they use Problem?.</p>
 

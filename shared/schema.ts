@@ -81,6 +81,8 @@ export const organizations = pgTable("organizations", {
   receiptFooter: varchar("receipt_footer", { length: 1024 }),
   receiptStyle: varchar("receipt_style", { length: 32 }).default("standard"),
   receiptTemplateHtml: text("receipt_template_html"),
+  /** Settings → Labels (migration 232); read through normalizeLabelSettings in shared/labelSettings.ts. */
+  labelSettings: jsonb("label_settings"),
   accentStyle: varchar("accent_style", { length: 32 }).default("arcarna"),
   businessColors: jsonb("business_colors"),
   receiptLogoEnabled: boolean("receipt_logo_enabled").default(false).notNull(),

@@ -28,6 +28,8 @@ import { settledBeforeToday, type DerivedCardState, type OpsTimingSettings } fro
 import type { OpsBoardStaffRow } from "@/hooks/useOpsBoard";
 import type { BoardOrder } from "@/lib/orderTypes";
 import { formatTimeOfDay } from "@/lib/opsClock";
+import { QuickPrintLabelsButton } from "@/components/labels/QuickPrintLabelsButton";
+import { orderDueText } from "@/lib/labels/labelRequests";
 import { currentTradingDay, localInstantAt, shiftIsoDate } from "@shared/time/tradingDay";
 import { OpsDelayInline } from "./OpsDelayInline";
 import { OpsPassMenu } from "./OpsPassMenu";
@@ -320,6 +322,18 @@ export function OpsCardActions({
           <Eye className="h-4 w-4 shrink-0" aria-hidden />
           View
         </Button>
+
+        {/* One tap: the shop's label set for this order (Settings → Labels),
+            live cards and the Done tray alike — reprinting is harmless. */}
+        {!isScheduled && (
+          <QuickPrintLabelsButton
+            orderId={order.id}
+            shortCode={order.shortCode}
+            dueText={orderDueText(derived.dueEffective, now, settings.timezone)}
+            className="px-3"
+            testId={`ops-print-labels-${order.id}`}
+          />
+        )}
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

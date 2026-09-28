@@ -866,7 +866,7 @@ export class DatabaseStorage implements IStorage {
       "name", "tradingName", "email", "phone", "address", "vatNumber", "companyNumber",
       "currency", "timezone", "businessType", "logoUrl", "invoiceTemplate", "invoicePrefix",
       "invoiceStartNumber", "paymentTerms", "defaultTaxRate", "receiptFooter", "receiptStyle",
-      "receiptTemplateHtml",
+      "receiptTemplateHtml", "labelSettings",
       "accentStyle", "businessColors", "setupWizardState", "onboardingState",
       "receiptLogoEnabled", "invoiceLogoEnabled",
       "invoiceBankName", "invoiceBankSortCode", "invoiceBankAccountNumber", "invoicePaymentLink",

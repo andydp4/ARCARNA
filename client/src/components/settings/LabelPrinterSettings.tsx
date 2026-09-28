@@ -1,5 +1,8 @@
 import { useEffect } from "react";
-import { Printer } from "lucide-react";
+import { Printer, Tag } from "lucide-react";
+import { Link } from "wouter";
+import { useAuth } from "@/hooks/useAuth";
+import { isAtLeast } from "@shared/accessPolicy";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { LM_CARD } from "@/components/PageHeader";
@@ -18,6 +21,8 @@ import { connectPrinter, disconnectPrinter, forgetPrinter, preloadPrinterLibrary
  * in this browser), like the rest of the System tab.
  */
 export function LabelPrinterSettings() {
+  const { user } = useAuth();
+  const canEditTemplates = isAtLeast(user?.role, "MANAGER");
   const support = usePrinterSupport();
   const printer = usePrinterState();
   const connected = printer.status === "connected" || printer.status === "printing";
@@ -39,6 +44,22 @@ export function LabelPrinterSettings() {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
+        {/* The templates are the shop's, not this device's, and editable by
+            managers and above (server/routes/labels.ts) — shown whether or
+            not this browser can reach a printer. */}
+        {canEditTemplates && (
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border p-3">
+            <p className="text-sm text-muted-foreground">
+              What goes on each label, which ones “Print labels” prints, and auto-print after payment.
+            </p>
+            <Button asChild variant="outline" data-testid="link-label-templates">
+              <Link href="/settings/labels">
+                <Tag className="h-4 w-4" aria-hidden />
+                Open label template editor
+              </Link>
+            </Button>
+          </div>
+        )}
         {!support.supported ? (
           <PrinterSupportNotice message={support.message} />
         ) : (

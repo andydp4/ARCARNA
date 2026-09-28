@@ -19,7 +19,7 @@ export const API_ROUTE_WORDS: ReadonlySet<string> = new Set([
   "end", "events", "evidence", "executions", "expense-analytics", "expense-report", "expenses",
   "export", "exports", "failed", "feature-flags", "for-order", "friction-truths", "gift-cards",
   "goods-receipts", "health", "history", "hour-of-day", "import", "imports", "intelligence",
-  "intents", "inventory", "invoices", "items", "job-queue", "layout", "lift", "link-customer",
+  "intents", "inventory", "invoices", "items", "job-queue", "labels", "layout", "lift", "link-customer",
   "locations", "log", "login", "logout", "loyalty", "loyalty-tiers", "managers", "mark-paid", "me",
   "metadata", "metrics", "min-price", "mine", "monthly-summary", "needs-a-look", "notifications",
   "onboarding", "open", "operations", "order-settings", "orders", "org", "org-notifications",

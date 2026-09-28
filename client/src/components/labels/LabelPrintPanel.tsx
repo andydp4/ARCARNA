@@ -24,6 +24,8 @@ import {
   subscribePrinter,
 } from "@/lib/labels/niimbot";
 import { currentSupportEnv, detectPrinterSupport } from "@/lib/labels/printerSupport";
+import { useLabelSettings } from "@/hooks/useLabelSettings";
+import { DEFAULT_LABEL_SETTINGS, type LabelSettings } from "@shared/labelSettings";
 import { canvasMeasure, renderLabel } from "@/lib/labels/renderLabel";
 
 export type LabelRequest =
@@ -38,16 +40,20 @@ export function usePrinterSupport() {
   return useMemo(() => detectPrinterSupport(currentSupportEnv()), []);
 }
 
-export function buildLabelSpec(request: LabelRequest, geometry: LabelGeometry): LabelSpec {
+export function buildLabelSpec(
+  request: LabelRequest,
+  geometry: LabelGeometry,
+  settings: LabelSettings = DEFAULT_LABEL_SETTINGS,
+): LabelSpec {
   if (request.kind === "order") {
     const url = orderLabelUrl(window.location.origin, APP_BASE, request.input.orderId);
-    return buildOrderLabel(request.input, url, canvasMeasure, geometry);
+    return buildOrderLabel(request.input, url, canvasMeasure, geometry, settings.order);
   }
-  return buildProductLabel(request.input, canvasMeasure, geometry);
+  return buildProductLabel(request.input, canvasMeasure, geometry, settings.product);
 }
 
 /** Paint the packed 1-bit page, so the preview is exactly what the head will burn. */
-function drawBitmap(bitmap: MonoBitmap, canvas: HTMLCanvasElement) {
+export function drawBitmap(bitmap: MonoBitmap, canvas: HTMLCanvasElement) {
   canvas.width = bitmap.width;
   canvas.height = bitmap.height;
   const ctx = canvas.getContext("2d");
@@ -105,6 +111,7 @@ export function PrinterStatusLine() {
 export function LabelPrintPanel({ request, onPrinted }: { request: LabelRequest; onPrinted?: () => void }) {
   const support = usePrinterSupport();
   const printer = usePrinterState();
+  const settings = useLabelSettings();
   const previewRef = useRef<HTMLCanvasElement>(null);
   const [copies, setCopies] = useState(1);
   const [renderError, setRenderError] = useState<string | null>(null);
@@ -120,7 +127,7 @@ export function LabelPrintPanel({ request, onPrinted }: { request: LabelRequest;
     const canvas = previewRef.current;
     if (!canvas) return;
     try {
-      const { bitmap } = renderLabel(buildLabelSpec(request, currentGeometry()));
+      const { bitmap } = renderLabel(buildLabelSpec(request, currentGeometry(), settings));
       drawBitmap(bitmap, canvas);
       setRenderError(null);
     } catch (e) {
@@ -129,14 +136,14 @@ export function LabelPrintPanel({ request, onPrinted }: { request: LabelRequest;
     }
     // requestKey stands in for `request`, which is a fresh object every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [requestKey, printer.model]);
+  }, [requestKey, printer.model, settings]);
 
   const onPrint = async () => {
     try {
       // Connect first (inside the click, for the Bluetooth chooser), then
       // render at the connected model's resolution.
       await connectPrinter();
-      const { bitmap } = renderLabel(buildLabelSpec(request, currentGeometry()));
+      const { bitmap } = renderLabel(buildLabelSpec(request, currentGeometry(), settings));
       await printBitmap(bitmap, copies);
       onPrinted?.();
     } catch {
