@@ -1206,19 +1206,15 @@ export class DatabaseStorage implements IStorage {
       gte(sql`date(${orders.settledAt})`, sql`${fromIso}::date`),
       lte(sql`date(${orders.settledAt})`, sql`${toIso}::date`),
     );
-    const topProducts = await db
-      .select({
-        name: products.name,
-        quantity: sql<number>`SUM(${orderItems.quantity})`.as('quantity'),
-        revenue: sql<number>`SUM(CAST(${orderItems.totalPrice} AS DECIMAL))`.as('revenue')
-      })
-      .from(orderItems)
-      .innerJoin(products, eq(orderItems.productId, products.id))
-      .innerJoin(orders, eq(orderItems.orderId, orders.id))
-      .where(settledCond)
-      .groupBy(products.name)
-      .orderBy(sql`SUM(${orderItems.quantity}) DESC`)
-      .limit(10);
+    const { productPerformance } = await import("./services/productPerformance");
+    const { rankProducts } = await import("@shared/analytics/productPerformance");
+    const performance = await productPerformance(settledCond);
+    const topProductRankings = {
+      revenue: rankProducts(performance, "revenue", 10),
+      grossProfit: rankProducts(performance, "grossProfit", 10),
+      quantity: rankProducts(performance, "quantity", 10),
+    };
+    const topProducts = topProductRankings.revenue;
 
     // Bucketed by SETTLED time, not created_at: a backdated or pre-order sale
     // carries a noon-local placeholder stamp on created_at (ARC-028's "11:00"
@@ -1238,6 +1234,8 @@ export class DatabaseStorage implements IStorage {
       total: totalOrders,
       average,
       topProducts,
+      topProductRankings,
+      productsMissingCosts: performance.filter((p) => p.grossProfit == null).length,
       hourlyDistribution
     };
   }
@@ -1393,8 +1391,8 @@ export class DatabaseStorage implements IStorage {
         return csvDocument(['Date', 'Revenue', 'Orders'], byDay());
       case 'orders':
         return csvDocument(
-          ['Product', 'Quantity', 'Revenue'],
-          (data.orders?.topProducts ?? []).map((p: any) => [p.name, p.quantity, p.revenue]),
+          ['Product', 'Quantity', 'Revenue', 'Gross Profit', 'Units Cost Missing'],
+          (data.orders?.topProducts ?? []).map((p: any) => [p.name, p.quantity, p.revenue, p.grossProfit ?? '', p.missingCostUnits ?? '']),
         );
       case 'customers':
         return csvDocument(

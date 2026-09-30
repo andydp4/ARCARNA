@@ -6,7 +6,7 @@
  * Phones get no pop-ups: chart tooltips are left out below `sm:` and every
  * figure a tooltip would carry is printed in the widget instead.
  */
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
@@ -50,6 +50,9 @@ import type { ChannelAttributionRow } from "@shared/analytics/channelAttribution
 import type { StockTurnCategoryRow } from "@shared/analytics/stockTurn";
 import { RFM_SEGMENTS, type RfmSegment } from "@shared/analytics/rfm";
 
+import { ProductRankingControl, ProductProfitNote } from "@/components/reports/ProductRankingControl";
+import { rankProducts, type ProductPerformance, type ProductRankingMetric } from "@shared/analytics/productPerformance";
+
 type Ctx = { window: TruthsWindow; isPhone: boolean };
 
 function toNum(v: unknown): number {
@@ -75,7 +78,9 @@ interface HubData {
   orders: {
     total: number;
     average: number;
-    topProducts: Array<{ name: string; quantity: number; revenue: number }>;
+    topProducts: ProductPerformance[];
+    topProductRankings?: Record<ProductRankingMetric, ProductPerformance[]>;
+    productsMissingCosts?: number;
     hourlyDistribution: Array<{ hour: number; count: number }>;
   };
   customers: {
@@ -320,20 +325,31 @@ function OrdersByHour({ window, isPhone }: Ctx) {
 }
 
 function TopProducts({ window }: Ctx) {
+  const [metric, setMetric] = useState<ProductRankingMetric>("revenue");
   const { data, isLoading, isError } = useHubData(window);
   if (isLoading) return <Loading />;
   if (isError || !data) return <Failed />;
+  const rows = data.orders?.topProductRankings?.[metric]
+    ?? rankProducts(data.orders?.topProducts ?? [], metric, 10);
   return (
-    <MiniTable
-      rows={(data.orders?.topProducts ?? []).slice(0, 5)}
-      rowKey={(r) => r.name}
-      empty="No products sold in this window."
-      cols={[
-        { header: "Product", cell: (r) => r.name },
-        { header: "Qty", cell: (r) => r.quantity, right: true },
-        { header: "Revenue", cell: (r) => money(toNum(r.revenue)), right: true },
-      ]}
-    />
+    <div className="space-y-3">
+      <ProductRankingControl value={metric} onChange={setMetric} />
+      <MiniTable
+        rows={rows.slice(0, 5)}
+        rowKey={(r) => r.productId}
+        empty={metric === "grossProfit" ? "No products with known costs in this window." : "No products sold in this window."}
+        cols={[
+          { header: "Product", cell: (r) => r.name },
+          { header: "Qty", cell: (r) => r.quantity, right: true },
+          { header: "Revenue", cell: (r) => money(toNum(r.revenue)), right: true },
+          { header: "Gross profit", cell: (r) => r.grossProfit == null ? "Cost missing" : money(r.grossProfit), right: true },
+        ]}
+      />
+      {!!data.orders?.productsMissingCosts && <p className="text-xs text-muted-foreground">
+        {data.orders.productsMissingCosts} product(s) have missing costs.
+      </p>}
+      <ProductProfitNote />
+    </div>
   );
 }
 

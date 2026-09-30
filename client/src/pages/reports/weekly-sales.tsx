@@ -16,9 +16,12 @@ import { money, moneyDelta, int, screenDate, isoDate, orDash } from "@/lib/repor
 import { mondayWeekBounds } from "@/lib/weekBounds";
 import type { CsvColumn } from "@/lib/reportExport";
 
+import { ProductRankingControl, ProductProfitNote } from "@/components/reports/ProductRankingControl";
+import { rankProducts, type ProductPerformance, type ProductRankingMetric } from "@shared/analytics/productPerformance";
+
 const META = reportByRef("ARC-T1-004")!;
 
-interface ProductRow {
+interface ProductRow extends ProductPerformance {
   rank: number;
   product: string;
   units: number;
@@ -32,24 +35,31 @@ export default function WeeklySalesReport() {
   const [scope, setScope] = useState<ReportScopeValue>({});
   const { data, isLoading, error } = useReport(META.ref, { ...bounds, ...scope });
 
+  const [metric, setMetric] = useState<ProductRankingMetric>("revenue");
   const s = data?.summary ?? {};
-  const rows = (data?.rows ?? []) as ProductRow[];
+  const allRows = (data?.rows ?? []) as ProductRow[];
+  const rows = rankProducts(allRows, metric, 5).map((r, i) => ({ ...r, rank: i + 1 }));
+  const missingCosts = allRows.filter((r) => r.grossProfit == null).length;
 
   const columns: ReportColumn<ProductRow>[] = [
     { header: "#", cell: (r) => r.rank, align: "center" },
     { header: "Product", cell: (r) => r.product },
     { header: "Units", cell: (r) => int(r.units), align: "right" },
     { header: "Revenue", cell: (r) => money(r.revenue), keyInfo: true, align: "right" },
+    { header: "Gross Profit", cell: (r) => r.grossProfit == null ? "Cost missing" : money(r.grossProfit), keyInfo: true, align: "right" },
   ];
 
   const csv: { rows: ProductRow[]; columns: CsvColumn<ProductRow>[] } = {
     rows,
     columns: [
       { header: "Week Ending", value: () => bounds.to },
+      { header: "Ranked By", value: () => metric },
       { header: "Rank", value: (r) => r.rank },
       { header: "Product", value: (r) => r.product },
       { header: "Units Sold", value: (r) => r.units },
       { header: "Revenue GBP", value: (r) => r.revenue.toFixed(2) },
+      { header: "Gross Profit GBP", value: (r) => r.grossProfit == null ? "" : r.grossProfit.toFixed(2) },
+      { header: "Units Cost Missing", value: (r) => r.missingCostUnits },
     ],
   };
 
@@ -131,14 +141,19 @@ export default function WeeklySalesReport() {
 
             <div className="mt-5">
               <h3 className="mb-2 text-sm font-semibold" style={{ color: "#1E3A8A" }}>
-                Top 5 Products
+                Top 5 Products — {metric === "grossProfit" ? "Gross profit" : metric === "quantity" ? "Quantity sold" : "Revenue"}
               </h3>
+              <div className="mb-3"><ProductRankingControl value={metric} onChange={setMetric} /></div>
               <ReportTable
                 columns={columns}
                 rows={rows}
-                empty={isLoading ? "Loading…" : "No sales data for this week. Check date range."}
-                getRowKey={(r) => String(r.rank)}
+                empty={isLoading ? "Loading…" : metric === "grossProfit" ? "No products with known costs this week." : "No sales data for this week. Check date range."}
+                getRowKey={(r) => r.productId}
               />
+              <div className="mt-3 space-y-1">
+                {!!missingCosts && <p className="text-xs text-muted-foreground">{missingCosts} product(s) have missing costs.</p>}
+                <ProductProfitNote />
+              </div>
             </div>
             <StaffFilterFootnote value={scope} />
           </>
