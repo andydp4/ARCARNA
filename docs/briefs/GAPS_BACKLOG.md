@@ -26,7 +26,7 @@
 | **Brief** | H1 |
 | **Snag** | HSTS documented in nginx example + deploy doc; **not verified** on live `viger.cloud` |
 | **Fix** | On VPS: ensure the Certbot HTTPS block includes `Strict-Transport-Security`; run `bash scripts/verify-production-headers.sh` (defaults to `https://arcarna.viger.cloud/api/health`) |
-| **Closed** | [x] 2026-06-06 — first verified against the old host. Re-check against `arcarna.viger.cloud` after any nginx change |
+| **Closed** | [x] 2026-06-06 against the old host. Re-checked 2026-10-03 against `https://arcarna.viger.cloud/api/health` (`scripts/verify-production-headers.sh`: HSTS present, health ok, metrics reachable) |
 
 <a id="gap-h1-02"></a>
 
