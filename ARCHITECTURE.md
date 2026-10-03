@@ -28,7 +28,7 @@ This document describes the architecture of the ARCARNA EPOS monorepo. See **RBA
 |------|----------|---------|
 | Process entry | `server/index.ts` | Express app, route registration, Vite dev / static serve |
 | Routes | `server/routes.ts` | All `/api/*` HTTP endpoints |
-| Auth setup | `server/replitAuth.ts` | Passport OIDC, session, allow-list |
+| Auth setup | Clerk (`AUTH_PROVIDER=clerk`); `server/replitAuth.ts` is the legacy path | Session, org scope, role checks |
 | Event bus | `server/eventBus.ts` | Transactional outbox, job queue, workers |
 
 **Dev:** `npm run dev` → `tsx server/index.ts`  
@@ -186,37 +186,17 @@ Audit: `inventoryMovements`, `loyaltyLedger`
 
 ## 5. Authentication
 
-### Flow
+Production auth is **Clerk** (`AUTH_PROVIDER=clerk`). The live account portal is `https://accounts.viger.cloud`. Setup: [docs/AUTH_SETUP_CLERK.md](docs/AUTH_SETUP_CLERK.md). `server/replitAuth.ts` remains as the legacy Passport path and is not what production uses.
 
-1. **Login:** `GET /api/login` → Passport OIDC (`replitauth:{hostname}`) → Replit IdP
-2. **Callback:** `GET /api/callback` → `checkAndHandleAllowList()` → redirect to `/` or `/pending-approval`
-3. **Session:** `express-session` + `connect-pg-simple` (PostgreSQL `sessions` table)
-4. **Check:** `GET /api/auth/user` → `isAuthenticated` middleware → returns user or 401
+### Roles and org scoping
 
-### Roles/Permissions
+- **Roles:** SUPER_ADMIN, ADMIN, MANAGER, CASHIER, and CUSTOMER (shop accounts). See `RBAC.md` and `shared/accessPolicy.ts`.
+- **Shop accounts** pass `requireCustomerOrgScope` on the shop routes only. `requireOrgScope` refuses `CUSTOMER` on staff routes (`STAFF_ONLY`).
+- **Locations = stores.** One org can have many locations. `locations.orgId` links to `organizations`.
+- **Middleware:** `requireRole(...)`, `requireOrgContext`, `requireOrgScope`.
+- **Development:** `npm run dev` sets `DEV_AUTH_BYPASS=1`. That bypass is off in production.
 
-| Role | Source | Middleware | Capability |
-|------|--------|------------|------------|
-| Authenticated | `req.isAuthenticated()` | `isAuthenticated` | All `/api/*` except auth endpoints |
-| Owner | `user.isOwner` (first user or in `allowed_users`) | `isOwner` | `/api/admin/*` (allowed-users, pending-approvals, worker-logs, dead-letters, etc.) |
-
-**Tables:** `allowed_users` (replit_user_id, email, name, is_owner), `user_approval_requests` (status: pending/approved/rejected).
-
-**Logic (replitAuth.ts):**
-
-- First user → becomes owner, added to `allowed_users`
-- Later users → must request access; owner approves/rejects
-- Pending users → redirected to `/pending-approval`; cannot access main app
-
-### Development Bypass
-
-- `NODE_ENV === 'development'` → `isAuthenticated` and `requireRole` bypass auth and treat request as dev SUPER_ADMIN.
-
-### Roles and Org Scoping (Phase 2A)
-
-- **Roles:** SUPER_ADMIN, ADMIN, MANAGER, CASHIER (see RBAC.md).
-- **Locations = stores** – One org can have many locations. `locations.orgId` links to `organizations`.
-- **Middleware:** `requireRole(...roles)`, `requireOrgContext`, `requireOrgScope`.
+Who can see cost, Evidence, exports and contact details is the v1.2 matrix in [docs/CURRENT_STATE.md](docs/CURRENT_STATE.md) and `shared/accessPolicy.ts`. Do not treat “any authenticated user” as enough for a staff route.
 
 ---
 

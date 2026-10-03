@@ -2,9 +2,9 @@
 
 One-page checklist for **VPS / external tooling** items that cannot be closed by application PRs alone. Run after each major deploy or quarterly.
 
-**After Wave 12:** production at `a37e9ae`+ on KVM2 `/root/MidnightEPOS` (legacy names until cutover). **KVM4 migration:** [`VPS_MIGRATION_KVM2_TO_KVM4.md`](./VPS_MIGRATION_KVM2_TO_KVM4.md) — new box at `72.60.23.130` uses `/root/ARCARNA` + `arcarna-epos`.
+**Production now:** `https://arcarna.viger.cloud/` at site root, PM2 `arcarna-epos`, directory `/root/ARCARNA`. Snapshot: [`../CURRENT_STATE.md`](../CURRENT_STATE.md). The wave-12 names below this checklist (KVM2, `/midnight`) are the June 2026 starting point, not the live URL.
 
-**Code status on `main`:** Waves 0–12 shipped (LM list pages #35, auth #31/#36/#37, deploy #38, Sentry context #39). This checklist closes remaining **operator** gaps from [GAPS_BACKLOG.md](../briefs/GAPS_BACKLOG.md).
+**Code status when this checklist was written:** waves 0–12. v1.2 and pull requests through #230 have shipped since. Operator gaps O2/O3 may still be open; check [GAPS_BACKLOG.md](../briefs/GAPS_BACKLOG.md) rather than assuming this page’s checkboxes.
 
 ---
 
@@ -23,7 +23,7 @@ One-page checklist for **VPS / external tooling** items that cannot be closed by
    ```bash
    bash scripts/verify-production-headers.sh
    # or manually:
-   curl -sI https://viger.cloud/arcarna/api/health | grep -i strict-transport-security
+   curl -sI https://arcarna.viger.cloud/api/health | grep -i strict-transport-security
    ```
 
 3. Expected: `Strict-Transport-Security: max-age=31536000; includeSubDomains`

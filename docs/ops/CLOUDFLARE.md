@@ -10,8 +10,8 @@ Operator runbook for DNS, TLS, caching, and common failures when Cloudflare sits
 
 ```
 Browser → Cloudflare (DNS, proxy, WAF) → VPS nginx :443 → Node :5000
-                                              ├── /           portal
-                                              └── /midnight   EPOS app + /midnight/api/*
+                                              ├── viger.cloud/              static portal
+                                              └── arcarna.viger.cloud/      arcarna at site root, /api/*
 ```
 
 Clerk auth and API calls must see correct `Host`, `X-Forwarded-Proto`, and must **not** be served from stale CDN cache.
@@ -53,12 +53,12 @@ Node/Express API routes should not emit `public` cache headers.
 
 | Symptom | Likely cause | Fix |
 |---------|----------------|-----|
-| Old dashboard numbers after deploy | CDN cached HTML/JS | Purge cache for `viger.cloud/midnight*` or disable cache on HTML |
+| Old Control Centre numbers after deploy | CDN cached HTML/JS | Purge cache for `arcarna.viger.cloud` or disable cache on HTML |
 | 401/403 after login on some regions only | Mixed Flexible/Full SSL | Set SSL to Full (strict); ensure origin cert valid |
-| Webhook or channel ingest failures | Cached POST response | Bypass cache for `/midnight/api/*` |
+| Webhook or channel ingest failures | Cached POST response | Bypass cache for `arcarna.viger.cloud/api/*` |
 | Sign-out loops or stale session | Cached auth responses | Bypass cache; check `Cache-Control` on API |
 
-**Purge:** Cloudflare → Caching → Configuration → **Purge Everything** (incident) or custom purge for `/midnight/*`.
+**Purge:** Cloudflare → Caching → Configuration → **Purge Everything** (incident) or custom purge for `arcarna.viger.cloud/*`.
 
 ---
 
@@ -66,7 +66,7 @@ Node/Express API routes should not emit `public` cache headers.
 
 ### 403 on sign-out or Clerk redirect
 
-- Confirm **Allowed redirect URLs** in Clerk dashboard include `https://viger.cloud/midnight/*`.
+- Confirm **Allowed redirect URLs** in Clerk dashboard include `https://arcarna.viger.cloud`. Account portal: `https://accounts.viger.cloud`.
 - Cloudflare **Bot Fight Mode** or WAF may block Clerk callbacks — add skip rule for Clerk IP ranges or path patterns per Clerk support docs.
 - Ensure origin receives `X-Forwarded-Proto: https` (nginx sets this; see example config).
 
@@ -94,8 +94,8 @@ Optional Cloudflare WAF managed rules for production; test POS checkout after en
 
 1. `git pull` + `npm ci && npm run build` on VPS (see wave briefs).
 2. `pm2 delete arcarna-epos && pm2 start ecosystem.config.cjs && pm2 save` (re-reads `.env`; `pm2 restart` does not)
-3. If users report stale UI: purge Cloudflare cache for `/midnight` paths.
-4. Smoke: `curl -sI https://viger.cloud/midnight/api/health` — expect `200`, `Cache-Control` no-store.
+3. If users report a stale till: purge Cloudflare cache for `arcarna.viger.cloud`.
+4. Smoke: `curl -fsS https://arcarna.viger.cloud/api/health` — expect `200` and `"ok":true`.
 
 ---
 

@@ -59,6 +59,7 @@ server {
 
 # OPTIONAL — redirect the old path-based URL to the new subdomain (for bookmarks).
 # Add inside the EXISTING viger.cloud server block (deploy/nginx-viger.cloud.conf.example):
-#   location /arcarna/ { return 301 https://arcarna.viger.cloud$request_uri; }
+#   location /arcarna/ { rewrite ^/arcarna/(.*)$ https://arcarna.viger.cloud/$1 permanent; }
 #   location = /arcarna { return 301 https://arcarna.viger.cloud/; }
-#   location /midnight/ { return 301 https://arcarna.viger.cloud/; }
+#   location /midnight/ { rewrite ^/midnight/(.*)$ https://arcarna.viger.cloud/$1 permanent; }
+#   location = /midnight { return 301 https://arcarna.viger.cloud/; }
