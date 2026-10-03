@@ -56,13 +56,13 @@ Also keep:
 
 In Clerk → **Configure** → **Paths** (or **Domains / URLs** depending on Clerk UI version):
 
-| Setting | Value for viger.cloud |
+| Setting | Value in production |
 |---------|------------------------|
 | Sign-in URL | `https://accounts.viger.cloud/sign-in` |
 | Sign-up URL | `https://accounts.viger.cloud/sign-up` |
-| After sign-in (fallback) | `https://viger.cloud/arcarna/` |
+| After sign-in (fallback) | `https://arcarna.viger.cloud/` |
 | After sign-out | `https://viger.cloud/` |
-| Home URL | `https://viger.cloud/arcarna/` |
+| Home URL | `https://arcarna.viger.cloud/` |
 
 For **IP-only testing** before a domain:
 
@@ -88,14 +88,14 @@ Add to server `.env` and rebuild:
 ```env
 CLERK_ACCOUNTS_URL=https://accounts.viger.cloud
 VITE_CLERK_ACCOUNTS_URL=https://accounts.viger.cloud
-VITE_APP_URL=https://viger.cloud/arcarna
-VITE_BASE_PATH=/arcarna
-APP_BASE_PATH=/arcarna
+VITE_APP_URL=https://arcarna.viger.cloud
+VITE_BASE_PATH=/
+APP_BASE_PATH=/
 ```
 
-The app redirects sign-in to `https://accounts.viger.cloud/sign-in?redirect_url=https://viger.cloud/arcarna/&link_domain=viger.cloud` (`link_domain` links the Account Portal back to the app host; this is **not** the same as adding a satellite in the Dashboard).
+The app redirects sign-in to `https://accounts.viger.cloud/sign-in` and returns the user to `https://arcarna.viger.cloud/`. `accounts.viger.cloud` was confirmed on the live auth runtime on 3 October 2026.
 
-`/sign-in` on `viger.cloud` auto-redirects to the Account Portal.
+`/sign-in` on the app host redirects to the Account Portal.
 
 ### Subdomains vs satellite domains (important)
 
@@ -111,7 +111,7 @@ If you see **“Signed in with Clerk, but the server session is not ready”**, 
 
 - `CLERK_SECRET_KEY` and `CLERK_PUBLISHABLE_KEY` are from the **same** Clerk application
 - `VITE_CLERK_PUBLISHABLE_KEY` matches `CLERK_PUBLISHABLE_KEY` (rebuild after changing)
-- Clerk dashboard lists `https://viger.cloud/arcarna/` under allowed redirect URLs
+- Clerk dashboard lists `https://arcarna.viger.cloud/` under allowed redirect URLs
 - Your email is on the **allowed users** list (or approve yourself as super admin via database — see developer)
 
 ---

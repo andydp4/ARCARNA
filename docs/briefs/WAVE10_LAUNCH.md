@@ -1,5 +1,7 @@
 # Wave 10 — Launch & preflight
 
+**Historical.** Sign-in checks that name `viger.cloud/midnight` are not the live app. See [`../CURRENT_STATE.md`](../CURRENT_STATE.md).
+
 **Status:** Complete on `main`. Wave 11 deploy + QA: [`WAVE11_LAUNCH.md`](./WAVE11_LAUNCH.md).
 
 **Prerequisite:** Wave 9 complete (U6 onboarding, U5 eslint, U7 tablet POS, auth satellite fix, Liquid Metal front pages).
