@@ -2,6 +2,14 @@
 
 All notable changes to the ARCARNA EPOS project will be documented in this file.
 
+## Current production — 3 October 2026
+
+Live app: `https://arcarna.viger.cloud/` at the site root. Deployed commit `70e27bf` (pull request #230, 28 September 2026). Health: `GET /api/health` on that host.
+
+Shipped since the June wave tracker, and included in that deploy: v1.2 phases 0A–10, v1.2.1 hardening, rota, Order Audit, Done tray, label templates. Staff-facing detail is in [docs/RELEASE_NOTES_1.2.md](docs/RELEASE_NOTES_1.2.md). The snapshot of what to trust is [docs/CURRENT_STATE.md](docs/CURRENT_STATE.md).
+
+The “pre-production” list that used to sit at the bottom of this file described an early 2025 build (Replit login, 19 tests). It is not the state of `main`.
+
 ## [Unreleased]
 
 ### Changed
@@ -47,37 +55,6 @@ All notable changes to the ARCARNA EPOS project will be documented in this file.
   - System status: Production ready with documented security enhancements
 - Reports generated in `/reports/` and `/docs/artifacts/download_package/`
 
-## Production Readiness Status
-
-### ✅ Completed
-- Core CRUD operations for all entities
-- Authentication with Replit OIDC
-- Real-time analytics engine
-- Customer loyalty and RFM scoring
-- Invoice generation with PDF support
-- Multi-location support
-- Expense tracking
-- Promotion management
-- Comprehensive test coverage (19 automated tests)
-- GDPR compliance (100%)
-- Mobile-optimized responsive design
-- Auto-save functionality
-- Web Contact Picker integration
-
-### ⚠️ Pre-Production Actions Required
-1. Run `npm audit fix` to address 7 npm vulnerabilities (4 low, 3 high)
-2. Implement input sanitization middleware for XSS/SQL injection protection
-3. Add rate limiting to API endpoints
-4. Validate performance on production hardware (target: P95 <250ms, >200 req/s)
-
-### 📊 System Metrics
-- **Test Coverage**: 19 automated tests across 5 core modules
-- **API Endpoints**: 20+ verified operational
-- **Database**: PostgreSQL with Drizzle ORM
-- **Performance**: 178 req/s (dev environment)
-- **Error Rate**: 0.00%
-- **GDPR Compliance**: 100%
-
 ---
 
-*For detailed release notes and feature documentation, see `/docs/` directory*
+*Staff-facing notes: [docs/RELEASE_NOTES_1.2.md](docs/RELEASE_NOTES_1.2.md). What is actually in production: [docs/CURRENT_STATE.md](docs/CURRENT_STATE.md).*

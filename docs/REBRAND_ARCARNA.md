@@ -1,6 +1,8 @@
 # ARCARNA rebrand — execution plan
 
-**Status:** Planning · **URL cutover:** `/midnight` → `/arcarna`
+**Status:** Superseded. The path move `/midnight` → `/arcarna` was an intermediate step. Production is now `https://arcarna.viger.cloud/` at the site root. Follow [`CURRENT_STATE.md`](CURRENT_STATE.md) and [`CUTOVER_ARCARNA_SUBDOMAIN.md`](CUTOVER_ARCARNA_SUBDOMAIN.md). Do not apply the `/arcarna` env block later in this file to the VPS.
+
+**Was:** Planning · **URL cutover:** `/midnight` → `/arcarna`
 
 ## Goals
 
@@ -235,7 +237,7 @@ curl -fsS http://127.0.0.1:5000/arcarna/api/health
 curl -sI http://127.0.0.1:5000/midnight/ | head -3   # expect 301
 ```
 
-**UptimeRobot:** URL → `https://viger.cloud/arcarna/api/health` ([`docs/ops/UPTIME_MONITORING.md`](docs/ops/UPTIME_MONITORING.md)).
+**UptimeRobot:** this step is stale. The live check is `https://arcarna.viger.cloud/api/health` ([`docs/ops/UPTIME_MONITORING.md`](docs/ops/UPTIME_MONITORING.md)).
 
 **nginx (optional hard redirect at edge):** add `location /midnight/ { return 301 /arcarna$request_uri; }` in [`deploy/nginx-viger.cloud.conf.example`](deploy/nginx-viger.cloud.conf.example) — belt-and-braces with app-level redirect.
 

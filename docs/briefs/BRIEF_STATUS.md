@@ -1,6 +1,8 @@
 # Brief status tracker
 
-**Last updated:** 2026-06-12 · **`main` ref:** `a37e9ae` (PRs **#31–#39**); deploy + QA — [`WAVE12_LAUNCH.md`](./WAVE12_LAUNCH.md) · **Next:** [`WAVE13_NEXT.md`](./WAVE13_NEXT.md)
+**Superseded for “what is live”.** As of 3 October 2026, `main` is `70e27bf` (pull request #230) and production is `https://arcarna.viger.cloud/`. See [`../CURRENT_STATE.md`](../CURRENT_STATE.md). The tables below stop at the June 2026 waves, plus the September Operations Centre (Phase N), which did land. Wave 13 was never the next build: v1.2 phases 0A–10 and pull requests #225–#230 shipped after this header was last rewritten.
+
+**Last rewritten as a wave tracker:** 2026-06-12 · **`main` ref at that time:** `a37e9ae` (PRs **#31–#39**).
 
 **Sources of truth:** git `main`, wave merge docs (`WAVE3_NEXT` … `WAVE8_NEXT`), codebase grep.  
 **Gaps & snags:** [`GAPS_BACKLOG.md`](./GAPS_BACKLOG.md) (actionable checklist).
@@ -206,13 +208,7 @@ Spec: [`PHASE_N_OPERATIONS_CENTRE.md`](./PHASE_N_OPERATIONS_CENTRE.md) (revision
 
 ## Migrations on `main`
 
-Applied via `scripts/apply-migrations-pm2.sh`: **001–014, 022–028, 030–035, 032** (gaps 015–021 intentional; 031 onboarding; 033–035 WhatsApp).
-
-| File | Brief |
-|------|-------|
-| 029 | **Not in repo** — F6 uses existing `products.barcode` column |
-| 031 | **Done** — U6 onboarding |
-| 033–035 | **Done** — WhatsApp (Wave 10) |
+Applied via `scripts/apply-migrations-pm2.sh`, in filename order, from `migrations/`. The directory is the list. As of pull request #230 the highest file is `232_label_settings.sql`. The June table that used to live here (stopping at 035) is not the set production runs. Do not reserve the numbers guessed in the 23 September v1.2 plan.
 
 ---
 

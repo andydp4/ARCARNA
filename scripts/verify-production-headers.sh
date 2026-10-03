@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # Verify production HTTP security headers (H1 / GAP-H1-01).
 # Usage: bash scripts/verify-production-headers.sh [base_url]
-# Default: https://viger.cloud/midnight/api/health
+# Default: https://arcarna.viger.cloud/api/health
 set -euo pipefail
 
-URL="${1:-https://viger.cloud/midnight/api/health}"
+URL="${1:-https://arcarna.viger.cloud/api/health}"
 HEALTH_BODY_URL="${URL%/api/health}/api/health"
 METRICS_URL="${URL%/api/health}/api/health/metrics"
 
-echo "=== MidnightEPOS production header check ==="
+echo "=== arcarna production header check ==="
 echo "URL: $URL"
 echo
 
