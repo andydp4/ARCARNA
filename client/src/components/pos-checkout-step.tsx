@@ -184,6 +184,8 @@ export type PosCheckoutStepProps = {
   confirmLabel?: string;
   /** Stripe is set up, so "Card (link)" is offered (v1.2 Stripe links). */
   cardLinkEnabled?: boolean;
+  /** One form: payment sits with the lines. No back step and no second footer. */
+  continuous?: boolean;
 };
 
 export function PosCheckoutStep(p: PosCheckoutStepProps) {
@@ -194,7 +196,12 @@ export function PosCheckoutStep(p: PosCheckoutStepProps) {
   const expenseTotal = p.expenses.reduce((sum, e) => sum + e.amount, 0);
 
   return (
-    <div className="pos-checkout-step flex h-full min-h-0 flex-col" data-testid="pos-checkout-step">
+    <div
+      className={cn("pos-checkout-step", !p.continuous && "flex h-full min-h-0 flex-col")}
+      data-testid="pos-checkout-step"
+      id="order-payment"
+    >
+      {!p.continuous && (
       <div className="flex items-center gap-2 border-b border-metal-edge px-4 py-3 sm:px-6">
         <Button
           type="button"
@@ -218,8 +225,9 @@ export function PosCheckoutStep(p: PosCheckoutStepProps) {
           </h2>
         </div>
       </div>
+      )}
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6">
+      <div className={p.continuous ? undefined : "min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6"}>
         <div className="mx-auto max-w-2xl space-y-5">
           <CustomerCreditNotice customerId={p.customerId} disabled={p.submitting} />
           {p.priceGuardPanel}
@@ -368,7 +376,7 @@ export function PosCheckoutStep(p: PosCheckoutStepProps) {
             <GiftCardPayment orderTotal={p.total} value={p.giftCardPayment} onChange={p.setGiftCardPayment} />
           )}
 
-          <section className="grid gap-4 sm:grid-cols-2">
+          <section className="grid gap-4 sm:grid-cols-2" id="order-fulfilment">
             <div>
               <span className="mb-2 block text-sm font-medium text-metal-warm-white" id="fulfilment-label">
                 Fulfilment
@@ -640,6 +648,7 @@ export function PosCheckoutStep(p: PosCheckoutStepProps) {
         </div>
       </div>
 
+      {!p.continuous && (
       <div
         // Right padding on phones keeps the button clear of the app's floating
         // chat launcher, fixed in the bottom-right corner.
@@ -680,6 +689,7 @@ export function PosCheckoutStep(p: PosCheckoutStepProps) {
           </Button>
         </div>
       </div>
+      )}
     </div>
   );
 }

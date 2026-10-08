@@ -1,10 +1,10 @@
 /**
  * The order form.
  *
- * Two steps, no pop-ups. Step 1 builds the order on the line editor: type a
- * code or name, scan a barcode, or tap a top seller, and fix quantity and
- * price on the line. Step 2 takes the payment on a full-screen step that
- * replaces the lines rather than floating over them.
+ * One form, no pop-ups. Products, the customer, fulfilment and payment are
+ * on the same screen. The total and Create order stay pinned to the bottom.
+ * Type a code or name, scan a barcode, or tap a top seller, and fix quantity
+ * and price on the line.
  *
  * It used to be a tile grid, a cart in a slide-over sheet, and a checkout
  * dialog stacked on top of the sheet. On Android the stacked layers fought
@@ -44,7 +44,6 @@ import { apiFetch } from "@/lib/appPaths";
 import { offlineStorage } from "@/lib/offline-storage";
 import { invalidateAfterPosCheckout } from "@/lib/query-invalidation";
 import { Button } from "@/components/ui/button";
-import { PageHeader } from "@/components/PageHeader";
 import { useToast } from "@/hooks/use-toast";
 import { ToastAction } from "@/components/ui/toast";
 import { PosOrderLines } from "@/components/pos-order-lines";
@@ -183,11 +182,10 @@ function MyShiftSummary() {
 
 export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) {
   const { toast } = useToast();
-  const [narrowRef, narrow] = usePosNarrow();
+  const [narrowRef] = usePosNarrow();
   const [cart, setCart] = useState<CartItem[]>([]);
-  /** Which step is on screen. "pay" replaces the lines with the payment step. */
-  const [view, setView] = useState<"build" | "pay">("build");
   // Sale funnel (v1.2 Phase 8B): the step only, never what is on the sale.
+  // One form means payment is on screen as soon as the till opens.
   const hadLinesRef = useRef(false);
   useEffect(() => {
     const has = cart.length > 0;
@@ -195,8 +193,8 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
     hadLinesRef.current = has;
   }, [cart.length]);
   useEffect(() => {
-    if (view === "pay") recordFunnel("pay");
-  }, [view]);
+    recordFunnel("pay");
+  }, []);
 
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<string>("cash");
@@ -670,7 +668,6 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
       // One customer's promotion must not follow the next sale.
       setAppliedPromo(null);
       setPromoCode("");
-      setView("build");
       // Back to the default, or one delivery quietly marks every later sale on
       // this till as a delivery too.
       setFulfilmentMethod("collection");
@@ -780,9 +777,6 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
   );
 
   useBarcodeScanner((code) => {
-    // A scan while taking payment is almost always the next customer's first
-    // item. Bring the lines back rather than adding to an order being paid.
-    if (view === "pay") setView("build");
     void addProductByBarcode(code);
   });
 
@@ -922,19 +916,10 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
     [priceGuard.enabled, paymentMethod, cart],
   );
 
-  // Handle checkout: move to the payment step.
+  // Jump to payment on the same form. Creating the order is the footer button.
   const handleCheckout = useCallback(() => {
-    if (placeOrderMutation.isPending) return;
-    if (cart.length === 0) {
-      toast({
-        title: "Nothing on the order",
-        description: "Add at least one line before continuing",
-        variant: "destructive",
-      });
-      return;
-    }
-    setView("pay");
-  }, [cart.length, placeOrderMutation.isPending, toast]);
+    document.getElementById("order-payment")?.scrollIntoView({ block: "nearest" });
+  }, []);
 
   // Add expense to order
   const addExpense = () => {
@@ -1274,7 +1259,7 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
     <div
       ref={narrowRef}
       className={cn(
-        "pos-shell @container flex flex-col overflow-hidden @[640px]:flex-row",
+        "pos-shell @container flex flex-col overflow-hidden",
         embedded ? "h-full" : "pos-viewport",
       )}
     >
@@ -1295,168 +1280,59 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
           }}
         />
       )}
-      {view === "pay" ? (
-        <div className="min-h-0 flex-1">
-          <PosCheckoutStep
-            total={total}
-            itemCount={cartItemCount}
-            customerName={selectedCustomer?.name ?? null}
-            customerEmail={
-              selectedCustomer?.email ??
-              selectedCustomer?.emailMasked ??
-              (customerHasEmail(selectedCustomer) ? "the email on file" : null)
-            }
-            paymentMethod={paymentMethod}
-            setPaymentMethod={setPaymentMethod}
-            personalUseReason={personalUseReason}
-            setPersonalUseReason={setPersonalUseReason}
-            splitPayment={splitPayment}
-            setSplitPayment={toggleSplitPayment}
-            tenderLegs={tenderLegs}
-            setTenderLegs={setTenderLegs}
-            splitRemaining={splitRemaining}
-            orderDate={orderDate}
-            setOrderDate={setOrderDate}
-            fulfilmentMethod={fulfilmentMethod}
-            setFulfilmentMethod={setFulfilmentMethod}
-            delivery={delivery}
-            setDelivery={setDelivery}
-            deliveryFeeSlot={
-              paymentMethod === "personal_use" ? null : (
-                <PosDeliveryFee
-                  value={deliveryFeeInput}
-                  onChange={setDeliveryFeeInput}
-                  name={deliveryFeeName}
-                  defaultPrice={orgSettings?.deliveryFeePrice ?? DELIVERY_FEE_PRICE_DEFAULT}
-                  disabled={submitting}
-                />
-              )
-            }
-            deliveryFee={deliveryFee}
-            deliveryFeeName={deliveryFeeName}
-            customerId={selectedCustomer?.id ?? null}
-            giftCardPayment={giftCardPayment}
-            setGiftCardPayment={setGiftCardPayment}
-            channel={channel}
-            setChannel={setChannel}
-            dueMinutes={dueMinutes}
-            dueTime={dueTime}
-            onSelectDueMinutes={selectDueMinutes}
-            onSelectDueTime={selectDueTime}
-            onClearDue={clearDue}
-            duePreorderRequired={isPreorderDate}
-            assigneeUserId={assigneeUserId}
-            setAssigneeUserId={setAssigneeUserId}
-            staff={staff}
-            currentUserId={(authUser as { id?: string } | null)?.id ?? null}
-            expenses={orderExpenses}
-            expenseCategory={expenseCategory}
-            setExpenseCategory={setExpenseCategory}
-            expenseDescription={expenseDescription}
-            setExpenseDescription={setExpenseDescription}
-            expenseAmount={expenseAmount}
-            setExpenseAmount={setExpenseAmount}
-            onAddExpense={addExpense}
-            onRemoveExpense={removeExpense}
-            emailReceipt={emailReceipt}
-            setEmailReceipt={setEmailReceipt}
-            submitting={submitting}
-            onBack={() => setView("build")}
-            onConfirm={processPayment}
-            priceGuardPanel={
-              <PriceGuardPayPanel
-                lines={guardLines}
-                choice={priceGuard.choice}
-                onChange={priceGuard.setChoice}
-                managers={priceGuard.managers}
-                disabled={submitting}
-              />
-            }
-            confirmLabel={guardLines.length > 0 ? `Confirm and ${confirmVerb(paymentMethod)}` : undefined}
-            cardLinkEnabled={cardLinkStatus?.enabled === true}
-          />
+      <div className="flex min-h-0 flex-1 flex-col">
+        <div className="pos-section-header shrink-0 px-4 pb-2 pt-3 sm:px-6">
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <h2 className="text-2xl font-semibold tracking-tight text-metal-warm-white">New order</h2>
+              {sellingLocation ? (
+                <p className="mt-1 text-sm text-metal-muted" data-testid="pos-selling-location">
+                  Selling at <span className="font-medium text-foreground">{sellingLocation.name}</span>
+                </p>
+              ) : noLocationWillResolve ? (
+                <p className="mt-1 text-sm font-medium text-destructive" data-testid="pos-no-location-warning">
+                  No selling location is set up. Ask an admin to set an organization default
+                  location, or a default location for this user, before creating an order.
+                </p>
+              ) : null}
+            </div>
+            <ProblemButton compact />
+          </div>
+          <nav aria-label="Order sections" className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm">
+            <a className="underline" href="#order-products">Products</a>
+            <a className="underline" href="#order-fulfilment">Fulfilment</a>
+            <a className="underline" href="#order-customer">Customer</a>
+            <a className="underline" href="#order-payment" data-testid="mobile-checkout-button">Payment</a>
+          </nav>
+          <MyShiftSummary />
         </div>
-      ) : (
-        <>
-          {/* Step 1: the order itself. */}
-          <div className="pos-products-panel flex min-h-0 flex-1 flex-col @[640px]:max-w-[62%] @[640px]:flex-[1.62]">
-            {embedded ? (
-              (sellingLocation || noLocationWillResolve) && (
-                <div className="shrink-0 px-4 pb-2 pt-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-xs font-medium uppercase tracking-wider text-metal-muted">Step 1 of 2 · Build the order</p>
-                    <ProblemButton compact />
-                  </div>
-                  {sellingLocation ? (
-                    <p className="mt-1 text-xs text-metal-muted" data-testid="pos-selling-location">
-                      Selling at <span className="font-medium text-foreground">{sellingLocation.name}</span>
-                    </p>
-                  ) : (
-                    <p className="mt-1 text-xs font-medium text-destructive" data-testid="pos-no-location-warning">
-                      No selling location is set up. Ask an admin to set an organization default
-                      location, or a default location for this user, before taking payment.
-                    </p>
-                  )}
-                  <MyShiftSummary />
-                </div>
-              )
-            ) : (
-              <div className="pos-section-header shrink-0 px-4 pb-3 pt-3 sm:px-6 sm:pt-5">
-                <PageHeader
-                  className="mb-0 sm:flex-col sm:items-stretch sm:justify-start 2xl:flex-row 2xl:items-start 2xl:justify-between"
-                  eyebrow="Step 1 of 2 · Build the order"
-                  title="Create Order"
-                  question={narrow ? undefined : "What is this customer buying?"}
-                  explanation={narrow ? undefined : "Type a code or name, scan, or tap a top seller. Fix quantity and price on the line."}
-                  action={<ProblemButton compact />}
-                />
-                {sellingLocation ? (
-                  <p className="mt-2 text-xs text-metal-muted" data-testid="pos-selling-location">
-                    Selling at <span className="font-medium text-foreground">{sellingLocation.name}</span>
-                  </p>
-                ) : noLocationWillResolve ? (
-                  <p
-                    className="mt-2 text-xs font-medium text-destructive"
-                    data-testid="pos-no-location-warning"
-                  >
-                    No selling location is set up. Ask an admin to set an organization default
-                    location, or a default location for this user, before taking payment.
-                  </p>
-                ) : null}
-                <MyShiftSummary />
-              </div>
-            )}
-            {lastSaleId && <TillLastSaleLabels key={lastSaleId} orderId={lastSaleId} onDismiss={() => setLastSaleId(null)} />}
-            {editingIssue && (
-              <div
-                className="mx-4 mt-2 shrink-0 rounded-lg border border-metal-edge px-3 py-2 text-xs sm:mx-6"
-                style={{ backgroundColor: "color-mix(in srgb, var(--warning) 12%, var(--card))" }}
-                data-testid="pos-editing-sale-issue"
-              >
-                <span className="font-medium text-foreground">Editing a sale from Needs attention</span>
-                {editingIssue.rungByName ? ` · rung by ${editingIssue.rungByName}` : ""}. It is recorded once, as
-                their sale, when you take payment.{" "}
-                <button
-                  type="button"
-                  className="underline"
-                  onClick={() => {
-                    setEditingIssue(null);
-                    setSaleRef(newClientOrderId());
-                    setCart([]);
-                  }}
-                  data-testid="pos-editing-sale-issue-cancel"
-                >
-                  Stop editing
-                </button>
-              </div>
-            )}
-
-            {/* Plain overflow scrolling, not a scroll-area widget: touch
-                scrolling and the on-screen keyboard both behave with the
-                browser's own scroller. */}
-            {/* Extra bottom room on phones so the last card can scroll clear of
-                the app's floating assistant buttons. */}
-            <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-28 pt-3 sm:px-6 sm:pb-6">
+        {lastSaleId && <TillLastSaleLabels key={lastSaleId} orderId={lastSaleId} onDismiss={() => setLastSaleId(null)} />}
+        {editingIssue && (
+          <div
+            className="mx-4 mt-2 shrink-0 rounded-lg border border-metal-edge px-3 py-2 text-xs sm:mx-6"
+            style={{ backgroundColor: "color-mix(in srgb, var(--warning) 12%, var(--card))" }}
+            data-testid="pos-editing-sale-issue"
+          >
+            <span className="font-medium text-foreground">Editing a sale from Needs attention</span>
+            {editingIssue.rungByName ? ` · rung by ${editingIssue.rungByName}` : ""}. It is recorded once, as
+            their sale, when you create the order.{" "}
+            <button
+              type="button"
+              className="underline"
+              onClick={() => {
+                setEditingIssue(null);
+                setSaleRef(newClientOrderId());
+                setCart([]);
+              }}
+              data-testid="pos-editing-sale-issue-cancel"
+            >
+              Stop editing
+            </button>
+          </div>
+        )}
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3 sm:px-6">
+          <div className="grid items-start gap-6 @[800px]:grid-cols-[minmax(0,1.6fr)_minmax(16rem,1fr)]">
+            <section id="order-products" className="min-w-0">
               {productsLoading ? (
                 <p className="py-6 text-sm text-metal-muted" data-testid="pos-products-loading">
                   Loading the catalogue…
@@ -1475,64 +1351,131 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
                   }
                 />
               )}
-
-              {/* On a narrow form — a phone, or the Operations Centre's pane —
-                  the customer, discounts and totals sit under the lines
-                  rather than beside them. */}
-              {narrow && (
-                <div className="pos-mobile-summary mt-6 rounded-xl border border-metal-edge p-4" data-testid="pos-mobile-summary">
-                  <PosCartPanel {...cartPanelProps} showCheckoutButton={false} />
-                </div>
-              )}
+            </section>
+            <div className="min-w-0 space-y-4">
+              <section id="order-customer">
+                <PosCartPanel {...cartPanelProps} showCheckoutButton={false} />
+              </section>
+              <PosCheckoutStep
+                continuous
+                total={total}
+                itemCount={cartItemCount}
+                customerName={selectedCustomer?.name ?? null}
+                customerEmail={
+                  selectedCustomer?.email ??
+                  selectedCustomer?.emailMasked ??
+                  (customerHasEmail(selectedCustomer) ? "the email on file" : null)
+                }
+                paymentMethod={paymentMethod}
+                setPaymentMethod={setPaymentMethod}
+                personalUseReason={personalUseReason}
+                setPersonalUseReason={setPersonalUseReason}
+                splitPayment={splitPayment}
+                setSplitPayment={toggleSplitPayment}
+                tenderLegs={tenderLegs}
+                setTenderLegs={setTenderLegs}
+                splitRemaining={splitRemaining}
+                orderDate={orderDate}
+                setOrderDate={setOrderDate}
+                fulfilmentMethod={fulfilmentMethod}
+                setFulfilmentMethod={setFulfilmentMethod}
+                delivery={delivery}
+                setDelivery={setDelivery}
+                deliveryFeeSlot={
+                  paymentMethod === "personal_use" ? null : (
+                    <PosDeliveryFee
+                      value={deliveryFeeInput}
+                      onChange={setDeliveryFeeInput}
+                      name={deliveryFeeName}
+                      defaultPrice={orgSettings?.deliveryFeePrice ?? DELIVERY_FEE_PRICE_DEFAULT}
+                      disabled={submitting}
+                    />
+                  )
+                }
+                deliveryFee={deliveryFee}
+                deliveryFeeName={deliveryFeeName}
+                customerId={selectedCustomer?.id ?? null}
+                giftCardPayment={giftCardPayment}
+                setGiftCardPayment={setGiftCardPayment}
+                channel={channel}
+                setChannel={setChannel}
+                dueMinutes={dueMinutes}
+                dueTime={dueTime}
+                onSelectDueMinutes={selectDueMinutes}
+                onSelectDueTime={selectDueTime}
+                onClearDue={clearDue}
+                duePreorderRequired={isPreorderDate}
+                assigneeUserId={assigneeUserId}
+                setAssigneeUserId={setAssigneeUserId}
+                staff={staff}
+                currentUserId={(authUser as { id?: string } | null)?.id ?? null}
+                expenses={orderExpenses}
+                expenseCategory={expenseCategory}
+                setExpenseCategory={setExpenseCategory}
+                expenseDescription={expenseDescription}
+                setExpenseDescription={setExpenseDescription}
+                expenseAmount={expenseAmount}
+                setExpenseAmount={setExpenseAmount}
+                onAddExpense={addExpense}
+                onRemoveExpense={removeExpense}
+                emailReceipt={emailReceipt}
+                setEmailReceipt={setEmailReceipt}
+                submitting={submitting}
+                onBack={() => undefined}
+                onConfirm={processPayment}
+                priceGuardPanel={
+                  <PriceGuardPayPanel
+                    lines={guardLines}
+                    choice={priceGuard.choice}
+                    onChange={priceGuard.setChoice}
+                    managers={priceGuard.managers}
+                    disabled={submitting}
+                  />
+                }
+                confirmLabel={guardLines.length > 0 ? `Confirm and ${confirmVerb(paymentMethod)}` : undefined}
+                cardLinkEnabled={cardLinkStatus?.enabled === true}
+              />
             </div>
-
-            {narrow && (
-              <div
-                // Right padding keeps the button clear of the app's floating
-                // chat launcher, which sits fixed in the bottom-right corner.
-                className="pos-action-bar shrink-0 py-3 pl-4 pr-[4.75rem]"
-                style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom, 0px))" }}
-              >
-                <div className="flex items-center justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="truncate text-xs text-metal-muted">
-                      {cartItemCount} {cartItemCount === 1 ? "item" : "items"}
-                      {selectedCustomer ? ` · ${selectedCustomer.name}` : ""}
-                    </div>
-                    <div className="text-2xl font-bold tabular-nums text-metal-warm-white" data-testid="mobile-order-total">
-                      £{total.toFixed(2)}
-                    </div>
-                  </div>
-                  <Button
-                    onClick={handleCheckout}
-                    size="lg"
-                    className="lm-btn-metal min-h-[52px] shrink-0 gap-2 px-5 text-base font-semibold"
-                    disabled={cart.length === 0 || submitting}
-                    data-testid="mobile-checkout-button"
-                  >
-                    {submitting ? (
-                      <>
-                        <ActionLoader className="text-primary-foreground" />
-                        Wait…
-                      </>
-                    ) : (
-                      "Continue to payment"
-                    )}
-                  </Button>
-                </div>
-              </div>
-            )}
           </div>
-
-          {/* A wide enough form: customer, discounts and totals in a rail
-              beside the lines rather than under them. */}
-          {!narrow && (
-            <div className="pos-cart-rail flex w-full flex-col overflow-y-auto border-l border-metal-edge p-4 max-w-[38%] flex-1">
-              <PosCartPanel {...cartPanelProps} />
+        </div>
+        <div
+          className="pos-action-bar shrink-0 py-3 pl-4 pr-[4.75rem] sm:px-6"
+          style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom, 0px))" }}
+        >
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <div className="truncate text-sm text-metal-muted">
+                {cartItemCount} {cartItemCount === 1 ? "item" : "items"}
+                {selectedCustomer ? ` · ${selectedCustomer.name}` : ""}
+              </div>
+              <div className="text-2xl font-bold tabular-nums text-metal-warm-white" data-testid="mobile-order-total">
+                <span data-testid="checkout-total">£{total.toFixed(2)}</span>
+              </div>
             </div>
-          )}
-        </>
-      )}
+            <Button
+              type="button"
+              onClick={processPayment}
+              size="lg"
+              className="lm-btn-metal min-h-11 shrink-0 gap-2 px-5 text-base font-semibold"
+              disabled={cart.length === 0 || submitting}
+              data-testid="button-confirm-payment"
+            >
+              {submitting ? (
+                <>
+                  <ActionLoader className="text-primary-foreground" />
+                  Wait…
+                </>
+              ) : guardLines.length > 0 ? (
+                `Confirm and ${confirmVerb(paymentMethod)}`
+              ) : paymentMethod === "personal_use" ? (
+                "Log personal use"
+              ) : (
+                "Create order"
+              )}
+            </Button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
