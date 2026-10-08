@@ -96,8 +96,15 @@ const CARD_LINK_OPTION = { value: "card_link", label: "Card (link)", Icon: QrCod
  */
 function confirmActionLabel(paymentMethod: string): string {
   if (paymentMethod === "personal_use") return "Log personal use";
-  if (paymentMethod === "tick") return "Place order";
-  return "Take payment";
+  return "Create order";
+}
+
+function paymentOutcome(method: string, split: boolean): string {
+  if (split) return "Create order saves the sale once every part of the payment adds up.";
+  if (method === "tick") return "On credit creates an unpaid order. The amount is collected later.";
+  if (method === "personal_use") return "Personal use is not a sale. Stock comes off and the cost is an expense.";
+  if (method === "card_link") return "Create order shows a link. The sale is paid when the customer pays on their phone.";
+  return "Create order records this as paid.";
 }
 
 export type PosCheckoutStepProps = {
@@ -203,7 +210,7 @@ export function PosCheckoutStep(p: PosCheckoutStepProps) {
         </Button>
         <div className="min-w-0">
           <p className="text-xs font-medium uppercase tracking-wider text-metal-muted">
-            Step 2 of 2 · {confirmActionLabel(p.paymentMethod)}
+            {confirmActionLabel(p.paymentMethod)}
           </p>
           <h2 className="truncate text-lg font-semibold tracking-tight text-metal-warm-white">
             £{p.total.toFixed(2)} · {p.itemCount} {p.itemCount === 1 ? "item" : "items"}
@@ -331,6 +338,9 @@ export function PosCheckoutStep(p: PosCheckoutStepProps) {
                 ))}
               </div>
             )}
+            <p className="mt-2 text-sm text-metal-muted" data-testid="payment-outcome">
+              {paymentOutcome(p.paymentMethod, p.splitPayment)}
+            </p>
           </section>
 
           {!p.splitPayment && p.paymentMethod === "personal_use" && (

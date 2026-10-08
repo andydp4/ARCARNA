@@ -86,9 +86,9 @@ import { cardLinkAmountOf, type CardLinkSale } from "@/lib/cardLinkSale";
 import { ProblemButton } from "@/components/problem/ProblemSheet";
 import { recordFunnel } from "@/lib/usage";
 
-/** "Confirm and take payment" (v1.2 Phase 4); the same verbs as the step's own button. */
+/** Price-guard confirm line. The button itself says Create order. */
 function confirmVerb(paymentMethod: string): string {
-  return paymentMethod === "tick" ? "place order" : "take payment";
+  return paymentMethod === "personal_use" ? "log personal use" : "create order";
 }
 
 type Product = PosProduct;
@@ -1037,6 +1037,15 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
       toast({
         title: "Set a due time",
         description: "Pre-orders need a due time before payment.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (cart.some((item) => item.quantityInvalid || (item.quantityInput !== undefined && item.quantityInput.trim() === ""))) {
+      toast({
+        title: "Check the quantities",
+        description: "Each line needs a quantity above zero before the order can be created.",
         variant: "destructive",
       });
       return;
