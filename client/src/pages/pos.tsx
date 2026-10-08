@@ -1333,6 +1333,12 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
         <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3 sm:px-6">
           <div className="grid items-start gap-6 @[800px]:grid-cols-[minmax(0,1.6fr)_minmax(16rem,1fr)]">
             <section id="order-products" className="min-w-0">
+              {cart.length > 0 && (
+                <p className="mb-2 text-sm text-metal-muted" data-testid="order-line-count">
+                  {cart.length} {cart.length === 1 ? "line" : "lines"} · {cartItemCount}{" "}
+                  {cartItemCount === 1 ? "item" : "items"}
+                </p>
+              )}
               {productsLoading ? (
                 <p className="py-6 text-sm text-metal-muted" data-testid="pos-products-loading">
                   Loading the catalogue…

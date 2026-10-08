@@ -64,9 +64,6 @@ import { setUsagePane } from "@/lib/usage";
 /** Below this main-area width the form and the board become tabs rather than panes. */
 const TWO_PANE_MIN_WIDTH = 900;
 
-/** The order form's share of a two-pane layout, per the owner's mock. */
-const FORM_PANE_PERCENT = 42;
-
 type OpsTab = "board" | "order";
 
 /** Reads a persisted per-device preference without ever throwing on a locked jar. */
@@ -185,34 +182,35 @@ export function OpsShell({
         </div>
       )}
       {isTwoPane ? (
-        <div className="flex min-h-0 flex-1 gap-4 p-4">
-          {/* pb-40 in each scroller: room to scroll the last card clear of the
-              floating Voice and WhatsApp launchers (UI-01). */}
-          <div className="flex min-w-0 flex-1 flex-col gap-4 overflow-y-auto pb-40 @container">
+        <div className="relative min-h-0 flex-1">
+          {/* The board stays mounted and keeps refreshing under the order
+              window. The strip to the left of the window stays tappable. */}
+          <div className="absolute inset-0 flex flex-col gap-4 overflow-y-auto p-4 pb-40 @container">
             {alertsSlot}
             {board}
           </div>
           <div
-            className="flex shrink-0 flex-col gap-2 overflow-y-auto rounded-xl border border-border bg-card p-2"
-            style={formCollapsed ? { width: "3.5rem" } : { width: `${FORM_PANE_PERCENT}%`, minWidth: "400px" }}
+            className="absolute inset-y-3 right-3 z-20 flex flex-col overflow-hidden rounded-xl border border-border bg-card shadow-2xl"
+            style={formCollapsed ? { width: "3.5rem" } : { width: "min(78%, 72rem)", minWidth: "400px" }}
             data-testid="ops-form-pane"
           >
-            <Button
-              size="touch"
-              variant="outline"
-              className="self-end"
-              onClick={() => setFormCollapsed((current) => !current)}
-              aria-expanded={!formCollapsed}
-              aria-label={formCollapsed ? "Show the new order pane" : "Hide the new order pane"}
-              data-testid="ops-form-collapse"
-            >
-              {formCollapsed ? (
-                <ChevronLeft className="h-4 w-4" aria-hidden />
-              ) : (
-                <ChevronRight className="h-4 w-4" aria-hidden />
-              )}
-            </Button>
-            {!formCollapsed && <div className="min-h-0 flex-1">{formSlot}</div>}
+            <div className="flex shrink-0 justify-end p-2">
+              <Button
+                size="touch"
+                variant="outline"
+                onClick={() => setFormCollapsed((current) => !current)}
+                aria-expanded={!formCollapsed}
+                aria-label={formCollapsed ? "Show the new order pane" : "Back to the board"}
+                data-testid="ops-form-collapse"
+              >
+                {formCollapsed ? (
+                  <ChevronLeft className="h-4 w-4" aria-hidden />
+                ) : (
+                  "Back to board"
+                )}
+              </Button>
+            </div>
+            {!formCollapsed && <div className="min-h-0 flex-1 overflow-hidden">{formSlot}</div>}
           </div>
         </div>
       ) : (
