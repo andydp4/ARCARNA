@@ -424,27 +424,49 @@ export class InventoryWorker implements IWorker {
     
     let adjustedProducts = 0;
 
+    // Movements are signed: a return reduces the quantity still deducted.
+    // Read once and reconcile the union of old and new products so omitted
+    // lines are returned too (including an edit that removes every line).
+    const previousMovements = await db
+      .select()
+      .from(inventoryMovements)
+      .where(and(
+        eq(inventoryMovements.correlationId, orderId),
+        eq(inventoryMovements.orgId, stockCtx.orgId),
+        eq(inventoryMovements.locationId, stockCtx.locationId),
+      ));
+    const previousQuantities = new Map<string, number>();
+    for (const movement of previousMovements) {
+      if (!movement.productId) continue;
+      previousQuantities.set(
+        movement.productId,
+        (previousQuantities.get(movement.productId) ?? 0) - movement.delta,
+      );
+    }
+
+    // Several lines (or SKU/UUID aliases) may resolve to the same product.
+    const currentQuantities = new Map<string, number>();
+    const resolvedProducts = new Map<string, ResolvedProduct>();
     for (const item of items) {
-      const qty = extractQuantity(item);
       const identifier = item.productId || item.sku;
       if (!identifier) continue;
 
       const product = await resolveProduct(identifier);
       if (!product) continue;
+      resolvedProducts.set(product.id, product);
+      currentQuantities.set(product.id, (currentQuantities.get(product.id) ?? 0) + extractQuantity(item));
+    }
 
-      // Get previous movements for this order+product to calculate delta
-      const previousMovements = await db
-        .select()
-        .from(inventoryMovements)
-        .where(eq(inventoryMovements.correlationId, orderId));
-
-      const previousQty = previousMovements
-        .filter(m => m.productId === product.id)
-        .reduce((sum, m) => sum + Math.abs(m.delta), 0);
-
+    const productIds = new Set([...previousQuantities.keys(), ...currentQuantities.keys()]);
+    for (const productId of productIds) {
+      const previousQty = previousQuantities.get(productId) ?? 0;
+      const qty = currentQuantities.get(productId) ?? 0;
       // Delta: positive = return stock, negative = deduct more
       const delta = previousQty - qty;
       if (delta === 0) continue;
+
+      const product = resolvedProducts.get(productId) ?? await resolveProduct(productId);
+      if (!product) continue;
 
       await adjustProductLocationStock({
         orgId: stockCtx.orgId,
