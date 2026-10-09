@@ -30,6 +30,7 @@ import type { CardState } from "@shared/orders/opsState";
 import { deriveCardState, isLiveLaneState } from "@shared/orders/opsState";
 import { listFor, type OpsAlertListItem } from "./opsAlerts";
 import { canSeeDeliveryAddress } from "@shared/accessPolicy";
+import { displayOrderNumber } from "@shared/orders/orderNumber";
 
 /** Presence: seen within this many minutes counts as "here" (brief, "Stations & presence"). */
 const PRESENT_WITHIN_MINUTES = 15;
@@ -170,6 +171,7 @@ function iso(value: Date | string | null | undefined): string | null {
 
 type RawOrderRow = {
   id: string;
+  orderNumber?: number | null;
   customerId: string | null;
   customerName: string | null;
   total: string;
@@ -213,6 +215,7 @@ async function selectBoardRows(orgId: string, cutoff: Date): Promise<RawOrderRow
   const rows = await db
     .select({
       id: orders.id,
+      orderNumber: orders.order_number,
       customerId: orders.customer_id,
       customerName: customers.name,
       total: orders.total,
@@ -381,7 +384,7 @@ function projectBoardOrder(
     row.dateKind === "preorder" || row.dateKind === "backdated" ? row.dateKind : "live";
   return {
     id: row.id,
-    shortCode: row.id.slice(0, 8),
+    shortCode: displayOrderNumber(row.id, row.orderNumber),
     customerId: row.customerId,
     customerName: row.customerName?.trim() ? row.customerName.trim() : null,
     total: row.total,
@@ -678,6 +681,7 @@ export async function getOpsBoardOrder(orgId: string, orderId: string): Promise<
   const [row] = await db
     .select({
       id: orders.id,
+      orderNumber: orders.order_number,
       customerId: orders.customer_id,
       customerName: customers.name,
       total: orders.total,

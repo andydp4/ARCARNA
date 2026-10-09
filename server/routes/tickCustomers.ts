@@ -18,6 +18,7 @@ import {
 import { rolesAtLeast } from "@shared/accessPolicy";
 import { CREDIT_MIN_ROLE, checkClearWholeTab } from "@shared/creditPolicy";
 import { creditPaymentTerms, drawerForCreditPayment, signalCreditPayment } from "../services/creditPaymentRules";
+import { displayOrderNumber } from "@shared/orders/orderNumber";
 
 function roundMoney(n: number): number {
   return Math.round(n * 100) / 100;
@@ -44,6 +45,7 @@ export function registerTickCustomerRoutes(app: Express, scoped: RequestHandler[
       const { db: appDb } = await import('../db');
       const { orderCredit } = await import('@shared/schema');
       const { eq, and, inArray, desc } = await import('drizzle-orm');
+      const { orders } = await import("@shared/schema");
       const creditRows = await appDb
         .select({
           customerId: orderCredit.customerId,
@@ -59,6 +61,15 @@ export function registerTickCustomerRoutes(app: Express, scoped: RequestHandler[
           inArray(orderCredit.status, ['outstanding', 'partial']),
         ))
         .orderBy(desc(orderCredit.givenOn));
+
+      const creditOrderIds = creditRows.map((row) => row.orderId).filter((id): id is string => Boolean(id));
+      const numberedOrders = creditOrderIds.length
+        ? await appDb
+            .select({ id: orders.id, orderNumber: orders.orderNumber })
+            .from(orders)
+            .where(inArray(orders.id, creditOrderIds))
+        : [];
+      const orderNumbers = new Map(numberedOrders.map((row) => [row.id, row.orderNumber]));
 
       // Two or more credit sales against the same customer are one account, not
       // separate rows — grouped here so the list totals what they actually owe
@@ -85,7 +96,7 @@ export function registerTickCustomerRoutes(app: Express, scoped: RequestHandler[
           lastOrderDate: rows[0].givenOn,
           orders: rows.map(r => ({
             id: r.orderId,
-            shortCode: r.orderId.slice(0, 8),
+            shortCode: displayOrderNumber(r.orderId, orderNumbers.get(r.orderId) ?? null),
             date: r.givenOn,
             amountGiven: Number(r.amountGiven),
             amountOutstanding: Number(r.amountOutstanding),

@@ -38,6 +38,31 @@ import {
 } from "../services/saleReference";
 import { attachSaleIssueResubmission, markSaleIssueResolved, unlessSaleIssue } from "../services/saleIssues";
 import { isValidClientOrderId } from "@shared/orders/saleReference";
+import { displayOrderNumber } from "@shared/orders/orderNumber";
+
+/** The number on a receipt: the shop order number, or the old R- reference. */
+function receiptLabel(id: string, orderNumber: number | null | undefined): string {
+  const shown = displayOrderNumber(id, orderNumber);
+  return /^\d+$/.test(shown) ? shown : `R-${shown.toUpperCase()}`;
+}
+
+/** A numbered invoice if one was issued, otherwise an older invoice's own number. */
+async function invoiceNumberForOrder(database: typeof import("../db").db, orderId: string): Promise<string | null> {
+  const { invoices } = await import("@shared/schema");
+  const { and, eq, isNotNull } = await import("drizzle-orm");
+  const [numbered] = await database
+    .select({ invoiceNumber: invoices.invoiceNumber })
+    .from(invoices)
+    .where(and(eq(invoices.orderId, orderId), isNotNull(invoices.sequenceNumber)))
+    .limit(1);
+  if (numbered?.invoiceNumber) return numbered.invoiceNumber;
+  const [legacy] = await database
+    .select({ invoiceNumber: invoices.invoiceNumber })
+    .from(invoices)
+    .where(eq(invoices.orderId, orderId))
+    .limit(1);
+  return legacy?.invoiceNumber ?? null;
+}
 import { plainValidationMessage, saleTooLargeMessage } from "@shared/orders/saleLimits";
 import { recordAdminAudit } from "../adminAudit";
 import { assertChargedAsShown, consumeSalePricingInTx, priceSaleInTx } from "../services/salePricing";
@@ -1153,6 +1178,7 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
         eventId, // Include eventId in response for tracing
         order: createdOrder ? {
           id: createdOrder.id,
+          orderNumber: createdOrder.order_number ?? null,
           status: createdOrder.status,
           total: createdOrder.total,
           paymentMethod: createdOrder.payment_method,
@@ -1400,7 +1426,9 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
           quantity: item.quantity,
           unitPrice: item.unitPrice,
           total: item.totalPrice,
-        }))
+        })),
+        reference: displayOrderNumber(order.id, order.order_number),
+        invoiceNumber: await invoiceNumberForOrder(mainDb, order.id),
       });
     } catch (error) {
       console.error("Error fetching order details:", error);
@@ -1498,7 +1526,7 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
       const { generateReceiptPdf } = await import("../services/pdfGenerator");
 
       const pdfBuffer = await generateReceiptPdf({
-        receiptNumber: `R-${String(order.id).slice(0, 8).toUpperCase()}`,
+        receiptNumber: receiptLabel(order.id, order.orderNumber),
         createdAt: (order.createdAt ?? new Date()).toISOString(),
         company: await loadCompanyInfo(ctx.orgId),
         items,
@@ -1518,7 +1546,7 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
       });
 
       res.setHeader("Content-Type", "application/pdf");
-      res.setHeader("Content-Disposition", `attachment; filename="receipt-${String(order.id).slice(0, 8)}.pdf"`);
+      res.setHeader("Content-Disposition", `attachment; filename="receipt-${receiptLabel(order.id, order.orderNumber)}.pdf"`);
       res.send(pdfBuffer);
     } catch (error) {
       console.error("Error generating receipt PDF:", error);

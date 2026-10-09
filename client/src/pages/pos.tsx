@@ -765,7 +765,9 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
       } else {
         toast({
           title: "Order Placed",
-          description: "Order has been successfully processed.",
+          description: data?.order?.orderNumber
+            ? `Order ${data.order.orderNumber}.`
+            : "Order has been successfully processed.",
           ...(createdOrderId && hadNoDueTime
             ? {
                 action: (

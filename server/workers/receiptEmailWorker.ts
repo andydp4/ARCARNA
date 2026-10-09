@@ -3,6 +3,7 @@
  */
 
 import { deliveryFeeSettingsFrom } from "@shared/orders/deliveryFee";
+import { displayOrderNumber } from "@shared/orders/orderNumber";
 import { receiptMoney } from "../services/receiptMoney";
 import { db } from "../db";
 import {
@@ -229,6 +230,7 @@ export class ReceiptEmailWorker implements IWorker {
         payload.order?.paymentMethod || order.paymentMethod || "unknown";
       const unsubUrl = unsubscribeUrlFor(customer.id, customer.email);
 
+      const orderLabel = displayOrderNumber(order.id, order.orderNumber);
       const html = renderReceiptTemplate(org.receiptTemplateHtml || "", {
         org: {
           name: org.tradingName || org.name,
@@ -236,7 +238,7 @@ export class ReceiptEmailWorker implements IWorker {
         },
         customer: { name: customer.name },
         order: {
-          number: order.id.slice(0, 8).toUpperCase(),
+          number: orderLabel,
           total: formatMoney(orderTotal, currency),
           subtotal: formatMoney(subtotal, currency),
           tax: formatMoney(tax, currency),
@@ -267,7 +269,7 @@ export class ReceiptEmailWorker implements IWorker {
       const sendResult = await resend.emails.send({
         from,
         to: customer.email,
-        subject: `Receipt ${org.tradingName || org.name} — ${order.id.slice(0, 8).toUpperCase()}`,
+        subject: `Receipt ${org.tradingName || org.name} — ${orderLabel}`,
         html,
       });
 

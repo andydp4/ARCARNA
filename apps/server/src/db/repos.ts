@@ -1,4 +1,5 @@
 import { eq, and, sql, inArray } from 'drizzle-orm'
+import { ORDER_NUMBER_START } from '../../../../shared/orders/orderNumber'
 import { getDb } from './index'
 import * as s from './schema'
 import type { OrdersRepo, ProductsRepo, CustomersRepo, Order, OrderId, OrderLine, ProductId, CustomerId, Product, Customer, StockContext } from '@midnight/domain'
@@ -148,6 +149,7 @@ export const OrdersRepoDrizzle: OrdersRepo = {
         fulfilment_method: orderWithOrg.fulfilmentMethod === "delivery" ? "delivery" : "collection",
         channel: orderWithOrg.channel ?? "pos",
         ...pricingColumns(orderWithOrg.pricing),
+        ...(orderWithOrg.orgId ? { order_number: await takeOrderNumber(orderWithOrg.orgId) } : {}),
       };
       await getDb().insert(s.orders).values(values)
       // `?? null` to match the order row above. PlaceOrderInput marks orgId
@@ -216,6 +218,43 @@ async function resolveStockCtx(p: ProductId, ctx?: StockContext): Promise<{ orgI
   if (!orgId) throw new Error('Stock context requires orgId')
   const locationId = await resolveStockLocationId({ orgId, locationId: ctx?.locationId, orderId: ctx?.orderId, userId: ctx?.userId })
   return { orgId, locationId }
+}
+
+/**
+ * The next shop order number, taken inside the sale's transaction.
+ *
+ * The organisation row is updated first, so two tills queue for it and cannot
+ * take the same number. A number already on an order is never reused, and the
+ * counter is not moved backwards. Orders from before this stay unnumbered.
+ */
+async function takeOrderNumber(orgId: string): Promise<number> {
+  const tx = getDb()
+  const floor = ORDER_NUMBER_START
+  const rows = rowsOf(
+    await tx.execute(sql`
+      UPDATE organizations
+      SET order_last_number = CASE
+        WHEN order_last_number IS NULL THEN GREATEST(
+          COALESCE(order_start_number, ${floor}),
+          ${floor},
+          COALESCE((SELECT MAX(order_number) FROM orders WHERE org_id = organizations.id), 0) + 1
+        )
+        ELSE GREATEST(
+          order_last_number + 1,
+          COALESCE(order_start_number, ${floor}),
+          ${floor},
+          COALESCE((SELECT MAX(order_number) FROM orders WHERE org_id = organizations.id), 0) + 1
+        )
+      END
+      WHERE id = ${orgId}
+      RETURNING order_last_number
+    `),
+  )
+  const n = Number(rows[0]?.order_last_number)
+  if (!Number.isInteger(n) || n < floor) {
+    throw new Error("Could not allocate an order number")
+  }
+  return n
 }
 
 function rowsOf(result: unknown): Array<Record<string, unknown>> {

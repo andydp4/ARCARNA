@@ -12,6 +12,8 @@ type OrderDetail = {
   total?: string | number | null;
   createdAt?: string | null;
   customerName?: string | null;
+  reference?: string | null;
+  invoiceNumber?: string | null;
   items?: Array<{
     id: string;
     productName?: string | null;
@@ -38,7 +40,7 @@ export default function OrderDetailPage() {
   const when = created
     ? new Date(created).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })
     : "";
-  const reference = id ? id.slice(0, 8) : "";
+  const reference = order?.reference || (id ? id.slice(0, 8) : "");
 
   return (
     <main className="mx-auto max-w-2xl space-y-4 p-4" data-testid="order-detail">
@@ -64,6 +66,9 @@ export default function OrderDetailPage() {
               {order.customerName ? ` · ${order.customerName}` : ""}
             </p>
             <p className="mt-2 text-xl tabular-nums">{money(order.total)}</p>
+            <p className="text-sm text-muted-foreground">
+              Invoice {order.invoiceNumber || "Not issued"}
+            </p>
           </header>
           <ul className="divide-y divide-border rounded-lg border">
             {(order.items ?? []).map((item) => (

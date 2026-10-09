@@ -181,7 +181,7 @@ export async function loadOrderForLabels(orderId: string): Promise<OrderLabelsOr
   const name = typeof d.customerName === "string" && d.customerName.trim() && d.customerName !== "Walk-in" ? d.customerName : null;
   return {
     id: d.id,
-    shortCode: String(d.id).slice(0, 8),
+    shortCode: typeof d.reference === "string" && d.reference ? d.reference : String(d.id).slice(0, 8),
     customerName: name,
     fulfilmentMethod: d.fulfilmentMethod === "delivery" ? "delivery" : "collection",
     itemCount: items.length,

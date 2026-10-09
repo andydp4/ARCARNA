@@ -13,6 +13,7 @@ import {
   REPLACE_PHONE_MIN_ROLE,
 } from "@shared/accessPolicy";
 import { duplicatePrompt, formatUkPhone, isMaskedValue, maskPhone } from "@shared/customerView";
+import { displayOrderNumber } from "@shared/orders/orderNumber";
 import {
   findCustomersByPhone,
   findPossibleDuplicates,
@@ -200,6 +201,7 @@ export function registerCustomerRoutes(app: Express, scoped: RequestHandler[]): 
       const found = await db
         .select({
           id: orders.id,
+          orderNumber: orders.orderNumber,
           createdAt: orders.createdAt,
           status: orders.status,
           total: orders.total,
@@ -215,7 +217,7 @@ export function registerCustomerRoutes(app: Express, scoped: RequestHandler[]): 
         total: countRow?.n ?? 0,
         orders: page.map((row) => ({
           id: row.id,
-          reference: row.id.slice(0, 8),
+          reference: displayOrderNumber(row.id, row.orderNumber),
           createdAt: row.createdAt,
           status: row.status,
           total: row.total,

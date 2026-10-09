@@ -18,10 +18,10 @@ Also shipped:
 - **Actual profit** on Profit Truths is takings, minus stock cost, minus order expenses, minus overheads. The same figure is on the Truths widget and, for admins, on Control Centre for today. Weekly Margin is named **Margin on goods** and does not take expenses off.
 - A manager can **Change customer** on an open order (Walk-in to a name, or the wrong person to the right one). Finished orders, credit already opened, and orders that used points stay as they are.
 - An unfinished order is saved on the server for the person using the till, about half a second after a change. The header says Saving, Saved, Waiting to sync, or Could not save. **Drafts** on the board opens one again. Discard is explicit. A draft does not take payment, move stock, or issue an invoice. If the same draft is saved from another till, this till asks which copy to keep. A gift card code is not stored in the draft. This browser also keeps a copy for this person and this shop if the save does not get through.
+- A new order is numbered from **440400001**. A new invoice is numbered from **440000001** (shown as INV-440000001, or the shop’s own prefix). Numbers already given out are left as they are. An order from before this still shows the start of its existing reference. An order with no invoice yet says **Not issued**.
 
 ## Still to do, in this order
 
-1. **Order numbers** starting 440400001 and invoice numbers starting 440000001, allocated on the server, without renumbering anything already issued. Until then, past orders show the start of the existing reference.
-2. **Design-system note** for the rest of the empty, filled, selected, invalid and disabled states.
+1. **Design-system note** for the rest of the empty, filled, selected, invalid and disabled states.
 
 The handoff HTML (`arcarna-order-review-v4.html`) is the picture. Its density, colour and layout menus are review tools and must not become settings in the till.

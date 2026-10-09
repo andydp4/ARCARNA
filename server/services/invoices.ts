@@ -27,7 +27,8 @@ import {
   refunds,
   type Invoice,
 } from "@shared/schema";
-import { and, desc, eq, inArray, isNotNull, isNull } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
+import { INVOICE_NOT_ISSUED, INVOICE_NUMBER_START, nextIssuedNumber } from "@shared/orders/orderNumber";
 import { currentTradingDay, shiftIsoDate } from "@shared/time/tradingDay";
 import { PAYMENT_STATUS_PAID } from "@shared/payments/cardLink";
 import {
@@ -39,7 +40,6 @@ import {
   storedInvoiceSubtotal,
   invoiceStatus,
   isMoneyTakenMethod,
-  nextInvoiceSequence,
   type InvoiceAmounts,
   type InvoiceCreditState,
   type InvoiceStatus,
@@ -223,7 +223,14 @@ export async function issueInvoiceForOrder(tx: InvoiceTx, orgId: string, orderId
         .limit(1)
     : [];
 
-  const sequence = nextInvoiceSequence(org.lastNumber, org.startNumber);
+  const [highest] = await tx
+    .select({ n: sql<number | null>`max(${invoices.sequenceNumber})` })
+    .from(invoices)
+    .where(eq(invoices.orgId, orgId));
+  const used = [org.lastNumber, highest?.n]
+    .map((n) => (n == null ? null : Math.trunc(Number(n))))
+    .filter((n): n is number => n != null && Number.isFinite(n));
+  const sequence = nextIssuedNumber(used.length ? Math.max(...used) : null, org.startNumber, INVOICE_NUMBER_START);
   await tx.update(organizations).set({ invoiceLastNumber: sequence }).where(eq(organizations.id, orgId));
 
   const issuedOn = currentTradingDay(org.timezone ?? "Europe/London");
@@ -469,9 +476,7 @@ export async function listInvoices(orgId: string, role: string | null | undefine
     };
     return {
       id: invoice?.id ?? order.id,
-      invoiceNumber:
-        invoice?.invoiceNumber ??
-        `INV-${new Date(order.createdAt ?? new Date()).getFullYear()}-${order.id.slice(0, 8).toUpperCase()}`,
+      invoiceNumber: invoice?.invoiceNumber ?? INVOICE_NOT_ISSUED,
       orderId: order.id,
       customerId: order.customerId,
       customerName: invoice?.billingName || customer?.name || "Walk-in customer",
@@ -585,9 +590,7 @@ export async function loadInvoiceDocument(
 
   return {
     document: {
-      invoiceNumber:
-        invoice?.invoiceNumber ??
-        `INV-${(order.createdAt ?? new Date()).getFullYear()}-${order.id.slice(0, 8).toUpperCase()}`,
+      invoiceNumber: invoice?.invoiceNumber ?? INVOICE_NOT_ISSUED,
       createdAt: invoice?.createdAt ?? order.createdAt ?? new Date(),
       dueDate,
       subtotal: shown.subtotal,

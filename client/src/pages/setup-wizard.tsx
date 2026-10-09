@@ -91,7 +91,7 @@ export default function SetupWizard() {
     logoUrl: "",
     invoiceTemplate: "standard",
     invoicePrefix: "INV",
-    invoiceStartNumber: 1000,
+    invoiceStartNumber: 440000001,
     paymentTerms: "Net 30",
     defaultTaxRate: "0",
     receiptFooter: "Thank you for your business",
