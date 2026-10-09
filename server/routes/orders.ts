@@ -1580,6 +1580,96 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
   });
 
   /**
+   * Move an open order onto a different customer, or off Walk-in.
+   * Completed orders, credit already opened, points and split payments stay put.
+   */
+  app.patch("/api/orders/:id/customer", ...scoped, requireRole(...rolesAtLeast("MANAGER")), async (req: any, res) => {
+    try {
+      const ctx = req.orgContext as { orgId: string | null; userId?: string };
+      if (!ctx?.orgId) return res.status(400).json({ message: "Org context required" });
+      const body = z.object({ customerId: z.string().uuid().nullable() }).safeParse(req.body);
+      if (!body.success) return res.status(400).json({ message: "Choose a customer, or Walk-in." });
+      const { db } = await import("../db");
+      const { customers, loyaltyLedger, orderCredit, orderEvents, orderPayments, orders } = await import("@shared/schema");
+      const { and, eq, sql } = await import("drizzle-orm");
+      const [order] = await db
+        .select()
+        .from(orders)
+        .where(and(eq(orders.id, req.params.id), eq(orders.orgId, ctx.orgId)))
+        .limit(1);
+      if (!order) return res.status(404).json({ message: "Order not found" });
+      if (order.status === "completed") {
+        return res.status(409).json({ message: "This order is already finished. Change the customer before it is handed over." });
+      }
+      if (order.paymentMethod === "personal_use" || order.paymentMethod === "card_link") {
+        return res.status(409).json({ message: "This kind of order cannot change customer." });
+      }
+      if ((order.pointsRedeemed ?? 0) > 0) {
+        return res.status(409).json({ message: "Points were used on this order, so the customer stays as it is." });
+      }
+      const [credit] = await db.select({ status: orderCredit.status }).from(orderCredit).where(eq(orderCredit.orderId, order.id)).limit(1);
+      if (credit && credit.status !== "voided") {
+        return res.status(409).json({ message: "This order is already on the credit list." });
+      }
+      const [pays] = await db
+        .select({ n: sql<number>`count(*)::int` })
+        .from(orderPayments)
+        .where(eq(orderPayments.orderId, order.id));
+      if ((pays?.n ?? 0) > 1) {
+        return res.status(409).json({ message: "This order was paid in more than one part." });
+      }
+      const [points] = await db
+        .select({ n: sql<number>`count(*)::int` })
+        .from(loyaltyLedger)
+        .where(eq(loyaltyLedger.orderId, order.id));
+      if ((points?.n ?? 0) > 0) {
+        return res.status(409).json({ message: "Loyalty points are already on this order, so the customer stays as it is." });
+      }
+      let toName: string | null = null;
+      if (body.data.customerId) {
+        const [customer] = await db
+          .select({ name: customers.name })
+          .from(customers)
+          .where(and(eq(customers.id, body.data.customerId), eq(customers.orgId, ctx.orgId)))
+          .limit(1);
+        if (!customer) return res.status(404).json({ message: "Customer not found" });
+        toName = customer.name;
+      }
+      if (order.paymentMethod === "tick" && !body.data.customerId) {
+        return res.status(409).json({ message: "A credit order needs a customer." });
+      }
+      let fromName: string | null = null;
+      if (order.customerId) {
+        const [from] = await db
+          .select({ name: customers.name })
+          .from(customers)
+          .where(eq(customers.id, order.customerId))
+          .limit(1);
+        fromName = from?.name ?? null;
+      }
+      await db.transaction(async (tx) => {
+        await tx.update(orders).set({ customerId: body.data.customerId }).where(eq(orders.id, order.id));
+        await tx.insert(orderEvents).values({
+          orgId: ctx.orgId!,
+          orderId: order.id,
+          kind: "customer_reassigned",
+          userId: req.user?.id ?? null,
+          meta: {
+            fromCustomerId: order.customerId,
+            toCustomerId: body.data.customerId,
+            fromName,
+            toName,
+          },
+        });
+      });
+      res.json({ customerId: body.data.customerId, customerName: toName });
+    } catch (error) {
+      console.error("Error changing the order customer:", error);
+      res.status(500).json({ message: "Could not change the customer" });
+    }
+  });
+
+  /**
    * Correct a live delivery's address (PRV-05) — the one edit anyone on the
    * counter may make to it, because the driver finds out at the door. Only
    * while the order is open; after completion it is the record.

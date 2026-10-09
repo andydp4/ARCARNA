@@ -567,6 +567,7 @@ export const ACCESS_POLICY: readonly RouteRule[] = [
   { method: "POST", path: "/api/customers/:id/saved-address", minRole: "CASHIER", reason: DELIVERY },
   { method: "POST", path: "/api/orders/board/phone-search", minRole: "CASHIER", reason: PHONE_LOOKUP },
   { method: "POST", path: "/api/orders/:id/customer-phone", minRole: "CASHIER", reason: DELIVERY },
+  { method: "PATCH", path: "/api/orders/:id/customer", minRole: "MANAGER", reason: CUSTOMER_VIEW },
   { method: "PATCH", path: "/api/orders/:id/delivery", minRole: "CASHIER", reason: DELIVERY },
   { method: "POST", path: "/api/orders/search", minRole: "CASHIER", reason: ORDER_HISTORY },
 

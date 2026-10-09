@@ -30,6 +30,7 @@ import { OrderLabelPrintPanel } from "@/components/labels/OrderLabelPrintPanel";
 import { orderDueText } from "@/lib/labels/labelRequests";
 import { deriveCardState, settledBeforeToday } from "@shared/orders/opsState";
 import { isAtLeast } from "@shared/accessPolicy";
+import { ChangeOrderCustomer } from "./ChangeOrderCustomer";
 import { CREDIT_MIN_ROLE } from "@shared/creditPolicy";
 
 /**
@@ -267,6 +268,7 @@ function OpsDetailsBody({
             <p className="text-lg font-semibold text-foreground">
               {order.customerName ?? "Walk-in"}
             </p>
+            {isAtLeast(role, "MANAGER") && <ChangeOrderCustomer order={order} />}
             <OpsCustomerCall key={order.id} order={order} role={role} currentUserId={currentUserId} />
           </div>
           <div className="text-right">

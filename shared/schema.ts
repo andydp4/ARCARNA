@@ -1946,6 +1946,8 @@ export const ORDER_EVENT_KINDS = [
   "deleted",
   // A manager's edit of lines/prices, with the money before and after (083).
   "edited",
+  // An open order moved from one customer to another, or off Walk-in (233).
+  "customer_reassigned",
 ] as const;
 export type OrderEventKind = (typeof ORDER_EVENT_KINDS)[number];
 
