@@ -15,13 +15,13 @@ Also shipped:
 - Empty search is Light Blue. A filled price or quantity is the darker Truth Blue with white text. After a payment choice, the others are charcoal and still selectable.
 - Order date and due time open from the field or the icon. A +minutes choice is saved as a clock time in the shop’s timezone, so it is not added again later. A future day asks for a clock time instead. A time that has already passed is named.
 - Managers and admins see **View all past orders** on the selected customer. The list loads in pages. Opening an order remembers the sale being built, and Back to the order puts it back.
+- **Actual profit** on Profit Truths is takings, minus stock cost, minus order expenses, minus overheads. The same figure is on the Truths widget and, for admins, on Control Centre for today. Weekly Margin is named **Margin on goods** and does not take expenses off.
 
 ## Still to do, in this order
 
-1. **Actual profit.** One labelled total: takings minus stock cost minus order expenses minus overheads. The margins report is goods margin only. Profit Truths already has the fuller sum under “Bottom line”.
-2. **Change the customer** on an order that is still open (left as walk-in, or the wrong person). Completed orders, credit and points wait.
-3. **Autosaved drafts** on the server, with a Drafts list on the board. Opening a past order already keeps the sale on this till.
-4. **Order numbers** starting 440400001 and invoice numbers starting 440000001, allocated on the server, without renumbering anything already issued. Until then, past orders show the start of the existing reference.
-5. **Design-system note** for the rest of the empty, filled, selected, invalid and disabled states.
+1. **Change the customer** on an order that is still open (left as walk-in, or the wrong person). Completed orders, credit and points wait.
+2. **Autosaved drafts** on the server, with a Drafts list on the board. Opening a past order already keeps the sale on this till.
+3. **Order numbers** starting 440400001 and invoice numbers starting 440000001, allocated on the server, without renumbering anything already issued. Until then, past orders show the start of the existing reference.
+4. **Design-system note** for the rest of the empty, filled, selected, invalid and disabled states.
 
 The handoff HTML (`arcarna-order-review-v4.html`) is the picture. Its density, colour and layout menus are review tools and must not become settings in the till.

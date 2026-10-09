@@ -530,7 +530,10 @@ function ProfitTruths({ window }: Ctx) {
       <Kpi label="Revenue" value={money(toNum(s.revenue))} />
       <Kpi label="Cost of goods" value={money(toNum(s.cogs))} />
       <Kpi label="Gross profit" value={money(toNum(s.grossProfit))} />
-      <Kpi label="Net profit" value={money(toNum(s.netProfit))} tone={toNum(s.netProfit) < 0 ? "bad" : undefined} />
+      <Kpi label="Actual profit" value={money(toNum(s.netProfit))} tone={toNum(s.netProfit) < 0 ? "bad" : undefined} />
+      <p className="col-span-2 text-xs text-muted-foreground">
+        Takings, minus stock cost, minus order expenses, minus overheads. VAT is included. Staff commission is not taken off.
+      </p>
       {toNum(s.deliveryFees) > 0 && (
         <Kpi label={s.deliveryFeesInMargin ? "Delivery fees (in margin)" : "Delivery fees (not in margin)"} value={money(toNum(s.deliveryFees))} />
       )}
