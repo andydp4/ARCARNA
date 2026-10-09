@@ -1554,6 +1554,32 @@ export type SaleIssue = typeof saleIssues.$inferSelect;
 export type InsertSaleIssue = typeof saleIssues.$inferInsert;
 
 /**
+ * An order the till has started but not created. Saving one does not take
+ * payment, move stock, or issue an invoice. `revision` goes up on every
+ * save so two tills cannot silently overwrite each other. (migration 234)
+ */
+export const orderDrafts = pgTable(
+  "order_drafts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .references(() => organizations.id, { onDelete: "cascade" })
+      .notNull(),
+    userId: varchar("user_id", { length: 255 }).notNull(),
+    revision: integer("revision").notNull().default(1),
+    status: varchar("status", { length: 16 }).notNull().default("open"),
+    label: varchar("label", { length: 120 }).notNull().default("Draft"),
+    payload: jsonb("payload").notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("order_drafts_owner_idx").on(table.orgId, table.userId, table.status),
+    check("order_drafts_status_check", sql`${table.status} IN ('open', 'submitted', 'discarded')`),
+  ],
+);
+export type OrderDraft = typeof orderDrafts.$inferSelect;
+
+/**
  * A tender leg as the till submits it. The legs must sum to the order total —
  * a split that does not add up is a sale where some money is unaccounted for,
  * which is exactly the state this table exists to make impossible.

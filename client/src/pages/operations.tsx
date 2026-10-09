@@ -31,6 +31,7 @@ import { OpsShiftControls } from "@/components/operations/OpsShiftControls";
 import { OpsTour, OpsTourButton } from "@/components/operations/OpsTour";
 import type { OpsFilter } from "@/components/operations/OpsHeader";
 import POS from "@/pages/pos";
+import { OrderDraftsButton } from "@/components/operations/OrderDraftsButton";
 import { setUsagePane } from "@/lib/usage";
 
 /**
@@ -137,6 +138,8 @@ export interface OpsShellProps {
    * the board is already on screen.
    */
   boardArrivalCount?: number;
+  /** Bump to open the order window again after it was tucked away. */
+  expandFormToken?: number;
 }
 
 /**
@@ -154,8 +157,12 @@ export function OpsShell({
   alertsSlot,
   headerExtras,
   boardArrivalCount = 0,
+  expandFormToken = 0,
 }: OpsShellProps) {
   const [formCollapsed, setFormCollapsed] = useState(false);
+  useEffect(() => {
+    if (expandFormToken > 0) setFormCollapsed(false);
+  }, [expandFormToken]);
 
   // Usage record (v1.2 Phase 8B): the board alone is an always-on
   // information screen, scored per open hour; with the order form in front
@@ -465,7 +472,16 @@ export default function OperationsCentre() {
   // Stable across the ticker's once-a-second re-render, so POS (which is not
   // memoized) never sees a "new" embedded prop object when nothing about it
   // actually changed.
-  const embeddedPosProps = useMemo(() => ({ onPlaced: handleOrderPlaced }), [handleOrderPlaced]);
+  const [resumeDraftId, setResumeDraftId] = useState<string | null>(null);
+  const [expandFormToken, setExpandFormToken] = useState(0);
+  const embeddedPosProps = useMemo(
+    () => ({
+      onPlaced: handleOrderPlaced,
+      resumeDraftId,
+      onResumeHandled: () => setResumeDraftId(null),
+    }),
+    [handleOrderPlaced, resumeDraftId],
+  );
 
   const blockedReason = board.staleness.isStale ? board.staleness.reason : null;
 
@@ -781,8 +797,16 @@ export default function OperationsCentre() {
         tab={tab}
         onTabChange={onTabChange}
         formSlot={<POS embedded={embeddedPosProps} />}
+        expandFormToken={expandFormToken}
         headerExtras={
           <>
+            <OrderDraftsButton
+              onResume={(id) => {
+                setResumeDraftId(id);
+                setExpandFormToken((current) => current + 1);
+                onTabChange("order");
+              }}
+            />
             <OpsTourButton />
             <OpsShiftControls />
           </>

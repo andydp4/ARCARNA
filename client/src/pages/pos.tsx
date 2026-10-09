@@ -76,6 +76,8 @@ import {
 import { useBarcodeScanner } from "@/hooks/useBarcodeScanner";
 import { playScanFailBeep, playScanSuccessBeep } from "@/lib/posAudio";
 import { useAuth } from "@/hooks/useAuth";
+import { draftStatusLabel, readLocalOrderDraft, useOrderDraft } from "@/hooks/useOrderDraft";
+import { orderDraftPayloadSchema, type OrderDraftPayload } from "@shared/orders/orderDraft";
 import { usePosNarrow } from "@/hooks/usePosNarrow";
 import type { LocationPickerOption } from "@shared/schema";
 import type { GiftCardPaymentState } from "@/pages/pos/payments/GiftCardPayment";
@@ -112,6 +114,9 @@ export interface PosEmbeddedProps {
   /** Called after a sale places successfully, with the new order's id, so the
    *  board can scroll to and flash the card that just landed on it. */
   onPlaced: (orderId: string) => void;
+  /** A draft chosen from the board's Drafts list. */
+  resumeDraftId?: string | null;
+  onResumeHandled?: () => void;
 }
 
 /** "4h 20m" for a live shift, matching the Shifts page's own duration format. */
@@ -315,13 +320,23 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
   });
   const staff = staffData?.staff ?? [];
 
+  // Set while a draft is being put back, so this default does not overwrite
+  // the receipt choice that was saved with it.
+  const emailFromDraft = useRef(false);
   useEffect(() => {
+    if (emailFromDraft.current) {
+      emailFromDraft.current = false;
+      return;
+    }
     if (customerHasEmail(selectedCustomer) && selectedCustomer?.receiptEmailOptIn !== false) {
       setEmailReceipt(true);
     } else {
       setEmailReceipt(false);
     }
   }, [selectedCustomer?.id, selectedCustomer?.email, selectedCustomer?.hasEmail, selectedCustomer?.receiptEmailOptIn]);
+
+  /** WhatsApp, Needs attention, or a past-order return already filled the form. */
+  const externalPrefillRef = useRef(false);
 
   // Fetch products
   const { data: products = [], isLoading: productsLoading } = useQuery<PosProduct[]>({
@@ -342,6 +357,7 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
       setDraftConsumed(true);
       return;
     }
+    externalPrefillRef.current = true;
     const matched: CartItem[] = [];
     const unmatched: string[] = [];
     for (const item of draft.items) {
@@ -390,6 +406,7 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
     setIssueDraftConsumed(true);
     const draft = consumeSaleIssueDraft();
     if (!draft) return;
+    externalPrefillRef.current = true;
     const sale = readSaleIssuePayload(draft.payload);
     const matched: CartItem[] = [];
     let unmatched = 0;
@@ -450,6 +467,7 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
         scroll?: number;
       };
       if (data.v !== 1) return;
+      externalPrefillRef.current = true;
       const byId = new Map(products.map((product) => [product.id, product]));
       const lines: CartItem[] = [];
       for (const line of data.cart ?? []) {
@@ -596,6 +614,36 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
       toast({ title: "Could not set a due time", description: error.message, variant: "destructive" });
     },
   });
+
+  const closeDraftRef = useRef<(outcome: "submitted" | "discarded") => Promise<void>>(async () => {});
+
+  const clearTillForm = useCallback(() => {
+    setEditingIssue(null);
+    setSaleRef(newClientOrderId());
+    setCart([]);
+    setSelectedCustomer(null);
+    setAppliedPromo(null);
+    setPromoCode("");
+    setFulfilmentMethod("collection");
+    setDelivery(EMPTY_POS_DELIVERY);
+    setDeliveryFeeInput(null);
+    setOrderDate(localIsoDate());
+    setOrderExpenses([]);
+    setSplitPayment(false);
+    setTenderLegs(freshSplitLegs());
+    setExpenseDescription("");
+    setExpenseAmount("");
+    setPersonalUseReason("");
+    setGiftCardPayment(null);
+    setRedeemPoints(0);
+    setPointsRedemptionAmount(0);
+    setRedeemInput("");
+    setChannel("pos");
+    setDueMinutes(null);
+    setDueTime("");
+    setDueTouched(false);
+    setAssigneeUserId("");
+  }, []);
 
   // Place order mutation
   const placeOrderMutation = useMutation({
@@ -748,32 +796,8 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
         void queryClient.invalidateQueries({ queryKey: ["/api/sale-issues"] });
         void queryClient.invalidateQueries({ queryKey: ["/api/sale-issues/summary"] });
       }
-      setEditingIssue(null);
-      setSaleRef(newClientOrderId());
-      setCart([]);
-      setSelectedCustomer(null);
-      // One customer's promotion must not follow the next sale.
-      setAppliedPromo(null);
-      setPromoCode("");
-      // Back to the default, or one delivery quietly marks every later sale on
-      // this till as a delivery too.
-      setFulfilmentMethod("collection");
-      setDelivery(EMPTY_POS_DELIVERY);
-      setDeliveryFeeInput(null);
-      // Same reason: one backdated entry must not quietly date every later
-      // sale on this till to last week.
-      setOrderDate(localIsoDate());
-      setOrderExpenses([]);
-      // Nor may one split sale leave its rows and amounts for the next customer.
-      setSplitPayment(false);
-      setTenderLegs(freshSplitLegs());
-      setExpenseDescription("");
-      setExpenseAmount("");
-      setChannel("pos");
-      setDueMinutes(null);
-      setDueTime("");
-      setDueTouched(false);
-      setAssigneeUserId("");
+      void closeDraftRef.current("submitted");
+      clearTillForm();
       await invalidateAfterPosCheckout(queryClient);
 
       // The lines editor is back on screen the instant the mutation settles;
@@ -802,6 +826,212 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
       });
     },
   });
+
+  const draftPayload = useMemo((): OrderDraftPayload | null => {
+    const lines = cart
+      .filter(
+        (line) =>
+          Number.isFinite(line.quantity) &&
+          line.quantity > 0 &&
+          Number.isFinite(line.customPrice) &&
+          line.customPrice >= 0 &&
+          line.customPrice <= 1_000_000,
+      )
+      .slice(0, 200)
+      .map((line) => ({
+        productId: line.product.id,
+        quantity: line.quantity,
+        customPrice: line.customPrice,
+      }));
+    if (lines.length === 0 && !selectedCustomer) return null;
+    const name = selectedCustomer?.name || cart[0]?.product.name || "Draft";
+    const label = (!selectedCustomer && cart.length > 1 ? `${name} +${cart.length - 1}` : name).slice(0, 120);
+    return {
+      lines,
+      customerId: selectedCustomer?.id ?? null,
+      paymentMethod: paymentMethod.slice(0, 50),
+      personalUseReason: personalUseReason.slice(0, 500),
+      splitPayment,
+      tenderLegs: tenderLegs.slice(0, 8).map((leg) => ({ method: leg.method.slice(0, 50), amount: leg.amount.slice(0, 20) })),
+      orderDate: orderDate.slice(0, 10),
+      fulfilmentMethod,
+      delivery: {
+        address: delivery.address.slice(0, 500),
+        postcode: delivery.postcode.slice(0, 20),
+        notes: delivery.notes.slice(0, 500),
+        saveAsCustomerAddress: delivery.saveAsCustomerAddress,
+      },
+      deliveryFeeInput: deliveryFeeInput ? deliveryFeeInput.slice(0, 20) : null,
+      promoCode: promoCode.slice(0, 50),
+      redeemPoints: Math.max(0, Math.min(1_000_000, Math.floor(redeemPoints) || 0)),
+      orderExpenses: orderExpenses
+        .filter((expense) => Number.isFinite(expense.amount) && expense.amount >= 0)
+        .slice(0, 20)
+        .map((expense) => ({
+        category: expense.category.slice(0, 100),
+        description: expense.description.slice(0, 500),
+        amount: expense.amount,
+      })),
+      emailReceipt,
+      channel,
+      dueTime: dueTime.slice(0, 8),
+      dueMinutes,
+      dueTouched,
+      assigneeUserId: assigneeUserId.slice(0, 255),
+      label,
+    };
+  }, [
+    cart,
+    selectedCustomer,
+    paymentMethod,
+    personalUseReason,
+    splitPayment,
+    tenderLegs,
+    orderDate,
+    fulfilmentMethod,
+    delivery,
+    deliveryFeeInput,
+    promoCode,
+    redeemPoints,
+    orderExpenses,
+    emailReceipt,
+    channel,
+    dueTime,
+    dueMinutes,
+    dueTouched,
+    assigneeUserId,
+  ]);
+
+  const orderDraft = useOrderDraft(
+    authUser?.orgId ?? null,
+    authUser?.id && authUser.id !== "pending" ? authUser.id : null,
+    draftPayload,
+    !!draftPayload && !editingIssue && !placeOrderMutation.isPending,
+  );
+  closeDraftRef.current = orderDraft.close;
+  const draftControls = useRef(orderDraft);
+  draftControls.current = orderDraft;
+
+  const paintDraft = useCallback(
+    (payload: OrderDraftPayload): string => {
+      draftControls.current.suspend();
+      const byId = new Map(products.map((product) => [product.id, product]));
+      const lines: CartItem[] = [];
+      let missingLines = 0;
+      for (const line of payload.lines) {
+        const product = byId.get(line.productId);
+        if (!product) {
+          missingLines += 1;
+          continue;
+        }
+        lines.push({
+          product,
+          quantity: line.quantity,
+          customPrice: line.customPrice,
+          subtotal: line.quantity * line.customPrice,
+        });
+      }
+      setCart(lines);
+      const customer = payload.customerId ? (customers.find((row) => row.id === payload.customerId) ?? null) : null;
+      setSelectedCustomer(customer);
+      setPaymentMethod(payload.paymentMethod || "cash");
+      setPersonalUseReason(payload.personalUseReason || "");
+      setSplitPayment(payload.splitPayment);
+      setTenderLegs(payload.tenderLegs.length > 0 ? payload.tenderLegs : freshSplitLegs());
+      setOrderDate(payload.orderDate || localIsoDate());
+      setFulfilmentMethod(payload.fulfilmentMethod);
+      setDelivery({ ...EMPTY_POS_DELIVERY, ...payload.delivery });
+      setDeliveryFeeInput(payload.deliveryFeeInput);
+      setPromoCode(payload.promoCode || "");
+      setAppliedPromo(null);
+      setRedeemPoints(payload.redeemPoints || 0);
+      setRedeemInput(payload.redeemPoints ? String(payload.redeemPoints) : "");
+      setOrderExpenses(payload.orderExpenses);
+      emailFromDraft.current = payload.customerId != null;
+      setEmailReceipt(payload.emailReceipt);
+      if (payload.channel === "pos" || payload.channel === "phone" || payload.channel === "whatsapp") {
+        setChannel(payload.channel);
+      }
+      setDueTouched(true);
+      setDueMinutes(payload.dueMinutes);
+      setDueTime(payload.dueTime || "");
+      setAssigneeUserId(payload.assigneeUserId || "");
+      return [
+        missingLines ? `${missingLines} line(s) are no longer in the catalogue` : "",
+        payload.customerId && !customer ? "the customer was not found" : "",
+        payload.promoCode ? "apply the promotion again if it is still wanted" : "",
+        payload.paymentMethod === "gift_card" ? "look up the gift card again before creating the order" : "",
+      ]
+        .filter(Boolean)
+        .join("; ");
+    },
+    [products, customers],
+  );
+
+  const localDraftBootstrapped = useRef(false);
+  useEffect(() => {
+    if (localDraftBootstrapped.current || productsLoading || customersLoading) return;
+    const orgId = authUser?.orgId;
+    const userId = authUser?.id;
+    if (!orgId || !userId || userId === "pending") return;
+    localDraftBootstrapped.current = true;
+    if (externalPrefillRef.current) return;
+    const local = readLocalOrderDraft(orgId, userId);
+    if (!local) return;
+    const notes = paintDraft(local.payload);
+    if (local.id) draftControls.current.adopt(local.id, local.revision);
+    if (notes) toast({ title: "Draft restored on this till", description: notes });
+  }, [productsLoading, customersLoading, authUser?.orgId, authUser?.id, paintDraft, toast]);
+
+  const resumeSeen = useRef<string | null>(null);
+  const resumeTicket = useRef(0);
+  const onResumeHandledRef = useRef(embedded?.onResumeHandled);
+  onResumeHandledRef.current = embedded?.onResumeHandled;
+  useEffect(() => {
+    const id = embedded?.resumeDraftId ?? null;
+    if (!id) {
+      resumeSeen.current = null;
+      return;
+    }
+    if (productsLoading || customersLoading || resumeSeen.current === id) return;
+    resumeSeen.current = id;
+    const ticket = ++resumeTicket.current;
+    void (async () => {
+      const res = await apiFetch(`/api/order-drafts/${id}`);
+      if (ticket !== resumeTicket.current) return;
+      if (!res.ok) {
+        toast({ title: "Draft not found", description: "It may have been discarded.", variant: "destructive" });
+        onResumeHandledRef.current?.();
+        return;
+      }
+      const body = (await res.json()) as { id?: string; revision?: number; payload?: unknown };
+      const parsed = orderDraftPayloadSchema.safeParse(body.payload);
+      if (!parsed.success || !body.id || typeof body.revision !== "number") {
+        toast({ title: "Draft could not be opened", variant: "destructive" });
+        onResumeHandledRef.current?.();
+        return;
+      }
+      const notes = paintDraft(parsed.data);
+      if (ticket !== resumeTicket.current) return;
+      draftControls.current.adopt(body.id, body.revision);
+      toast({
+        title: "Draft opened",
+        description: notes || "Check it, then create the order when you are ready.",
+      });
+      onResumeHandledRef.current?.();
+    })();
+  }, [embedded?.resumeDraftId, productsLoading, customersLoading, paintDraft, toast]);
+
+  useEffect(() => {
+    const onDiscarded = (event: Event) => {
+      const id = (event as CustomEvent<{ id?: string }>).detail?.id;
+      if (!id || id !== draftControls.current.draftId()) return;
+      void draftControls.current.close("discarded");
+      clearTillForm();
+    };
+    window.addEventListener("arcarna-draft-discarded", onDiscarded);
+    return () => window.removeEventListener("arcarna-draft-discarded", onDiscarded);
+  }, [clearTillForm]);
 
   // Adds a line, or bumps the quantity of the line the product is already on.
   // No toast: the line appearing in the editor is the confirmation.
@@ -1382,6 +1612,29 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
               <h2 className="text-2xl font-semibold tracking-tight text-metal-warm-white">New order</h2>
+              {draftStatusLabel(orderDraft.status) && (
+                <p className="mt-1 text-sm text-metal-muted" data-testid="order-draft-status">
+                  {draftStatusLabel(orderDraft.status)}
+                  {orderDraft.status === "error" && (
+                    <button type="button" className="ml-2 min-h-11 underline" onClick={() => void orderDraft.retry()} data-testid="button-draft-retry">
+                      Try again
+                    </button>
+                  )}
+                  {orderDraft.status !== "idle" && orderDraft.status !== "saving" && (
+                    <button
+                      type="button"
+                      className="ml-2 min-h-11 underline"
+                      onClick={() => {
+                        void orderDraft.close("discarded");
+                        clearTillForm();
+                      }}
+                      data-testid="button-discard-draft"
+                    >
+                      Discard draft
+                    </button>
+                  )}
+                </p>
+              )}
               {sellingLocation ? (
                 <p className="mt-1 text-sm text-metal-muted" data-testid="pos-selling-location">
                   Selling at <span className="font-medium text-foreground">{sellingLocation.name}</span>
@@ -1403,6 +1656,36 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
           </nav>
           <MyShiftSummary />
         </div>
+        {orderDraft.status === "conflict" && (
+          <div
+            className="mx-4 mt-2 shrink-0 rounded-lg border border-metal-edge px-3 py-2 text-sm sm:mx-6"
+            style={{ backgroundColor: "color-mix(in srgb, var(--warning) 12%, var(--card))" }}
+            data-testid="order-draft-conflict"
+          >
+            <p>This draft was changed on another till.</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <Button
+                type="button"
+                size="touch"
+                variant="outline"
+                disabled={!orderDraft.serverCopy}
+                onClick={() => {
+                  if (!orderDraft.serverCopy) return;
+                  const id = orderDraft.draftId();
+                  const notes = paintDraft(orderDraft.serverCopy);
+                  if (id && orderDraft.conflictRevision != null) orderDraft.adopt(id, orderDraft.conflictRevision);
+                  if (notes) toast({ title: "Draft opened", description: notes });
+                }}
+                data-testid="button-draft-use-other"
+              >
+                Use the other till’s copy
+              </Button>
+              <Button type="button" size="touch" variant="outline" onClick={() => orderDraft.keepMine()} data-testid="button-draft-keep-mine">
+                Keep this till’s copy
+              </Button>
+            </div>
+          </div>
+        )}
         {lastSaleId && <TillLastSaleLabels key={lastSaleId} orderId={lastSaleId} onDismiss={() => setLastSaleId(null)} />}
         {editingIssue && (
           <div

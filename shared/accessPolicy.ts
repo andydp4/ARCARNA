@@ -570,6 +570,11 @@ export const ACCESS_POLICY: readonly RouteRule[] = [
   { method: "PATCH", path: "/api/orders/:id/customer", minRole: "MANAGER", reason: CUSTOMER_VIEW },
   { method: "PATCH", path: "/api/orders/:id/delivery", minRole: "CASHIER", reason: DELIVERY },
   { method: "POST", path: "/api/orders/search", minRole: "CASHIER", reason: ORDER_HISTORY },
+  { method: "GET", path: "/api/order-drafts", minRole: "CASHIER", reason: ORDER_HISTORY },
+  { method: "POST", path: "/api/order-drafts", minRole: "CASHIER", reason: ORDER_HISTORY },
+  { method: "GET", path: "/api/order-drafts/:id", minRole: "CASHIER", reason: ORDER_HISTORY },
+  { method: "PUT", path: "/api/order-drafts/:id", minRole: "CASHIER", reason: ORDER_HISTORY },
+  { method: "POST", path: "/api/order-drafts/:id/close", minRole: "CASHIER", reason: ORDER_HISTORY },
 
   // My run (v1.2). Whose run and who may fail a delivery are checked per row
   // in the handler; these rows are the floor.
