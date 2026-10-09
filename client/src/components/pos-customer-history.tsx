@@ -92,7 +92,7 @@ export function PosCustomerHistory({
     <div className="mt-3" data-testid="customer-order-history">
       <button
         type="button"
-        className="text-sm font-medium text-metal-warm-white underline underline-offset-2"
+        className="inline-flex min-h-11 items-center text-sm font-medium text-metal-warm-white underline underline-offset-2"
         aria-expanded={open}
         onClick={() => setOpen((current) => !current)}
         data-testid="button-customer-history"
@@ -118,7 +118,7 @@ export function PosCustomerHistory({
                 <Link
                   href={`/orders/${order.id}`}
                   onClick={() => onBeforeLeave()}
-                  className="flex items-baseline justify-between gap-2 rounded-md px-1 py-1 text-sm hover:bg-white/5"
+                  className="flex min-h-11 items-center justify-between gap-2 rounded-md px-1 text-sm hover:bg-white/5"
                   data-testid={`customer-history-${order.id}`}
                 >
                   <span className="font-mono text-truth">{order.reference}</span>
@@ -133,7 +133,7 @@ export function PosCustomerHistory({
           </ul>
           {loading && <p className="text-sm text-metal-muted">Loading…</p>}
           {nextOffset != null && !loading && (
-            <button type="button" className="text-sm underline" onClick={() => void loadMore()} data-testid="button-customer-history-more">
+            <button type="button" className="inline-flex min-h-11 items-center text-sm underline" onClick={() => void loadMore()} data-testid="button-customer-history-more">
               Load more
             </button>
           )}

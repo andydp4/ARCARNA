@@ -337,6 +337,9 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
 
   /** WhatsApp, Needs attention, or a past-order return already filled the form. */
   const externalPrefillRef = useRef(false);
+  /** Full order remembered when a past order is opened, applied once the form can paint it. */
+  const sessionReturnRef = useRef<{ payload: OrderDraftPayload; scroll: number } | null>(null);
+  const draftPayloadRef = useRef<OrderDraftPayload | null>(null);
 
   // Fetch products
   const { data: products = [], isLoading: productsLoading } = useQuery<PosProduct[]>({
@@ -456,6 +459,7 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
     try {
       const data = JSON.parse(raw) as {
         v?: number;
+        payload?: unknown;
         cart?: { productId: string; quantity: number; customPrice: number }[];
         customerId?: string | null;
         paymentMethod?: string;
@@ -466,6 +470,13 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
         channel?: PosChannel;
         scroll?: number;
       };
+      if (data.v === 2) {
+        const parsed = orderDraftPayloadSchema.safeParse(data.payload);
+        if (!parsed.success) return;
+        externalPrefillRef.current = true;
+        sessionReturnRef.current = { payload: parsed.data, scroll: data.scroll ?? 0 };
+        return;
+      }
       if (data.v !== 1) return;
       externalPrefillRef.current = true;
       const byId = new Map(products.map((product) => [product.id, product]));
@@ -501,31 +512,18 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
   }, [productsLoading, customersLoading, products, customers]);
 
   const stashOrderDraft = useCallback(() => {
+    const payload = draftPayloadRef.current;
+    if (!payload) return;
     try {
       const scroller = document.querySelector<HTMLElement>("[data-testid='order-form-scroll']");
       sessionStorage.setItem(
         ORDER_FORM_DRAFT_KEY,
-        JSON.stringify({
-          v: 1,
-          cart: cart.map((line) => ({
-            productId: line.product.id,
-            quantity: line.quantity,
-            customPrice: line.customPrice,
-          })),
-          customerId: selectedCustomer?.id ?? null,
-          paymentMethod,
-          fulfilmentMethod,
-          orderDate,
-          dueTime,
-          dueMinutes,
-          channel,
-          scroll: scroller?.scrollTop ?? 0,
-        }),
+        JSON.stringify({ v: 2, payload, scroll: scroller?.scrollTop ?? 0 }),
       );
     } catch {
       // If the browser will not store it, opening the past order in a new tab still leaves this sale on screen.
     }
-  }, [cart, selectedCustomer, paymentMethod, fulfilmentMethod, orderDate, dueTime, dueMinutes, channel]);
+  }, []);
 
   // Tax rate must come from the org, not a constant: the till previously
   // showed 10% while the server charged 20%, so the customer was quoted one
@@ -969,6 +967,30 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
     },
     [products, customers],
   );
+
+  draftPayloadRef.current = draftPayload;
+
+  const sessionReturnApplied = useRef(false);
+  useEffect(() => {
+    if (sessionReturnApplied.current || productsLoading || customersLoading) return;
+    const pending = sessionReturnRef.current;
+    if (!pending) return;
+    sessionReturnApplied.current = true;
+    sessionReturnRef.current = null;
+    const notes = paintDraft(pending.payload);
+    const orgId = authUser?.orgId;
+    const userId = authUser?.id;
+    if (orgId && userId && userId !== "pending") {
+      const local = readLocalOrderDraft(orgId, userId);
+      if (local?.id) draftControls.current.adopt(local.id, local.revision);
+    }
+    const scroll = pending.scroll;
+    requestAnimationFrame(() => {
+      document.querySelector<HTMLElement>("[data-testid='order-form-scroll']")?.scrollTo(0, scroll);
+      document.querySelector<HTMLInputElement>("[data-testid='line-product-new']")?.focus();
+    });
+    if (notes) toast({ title: "Draft restored on this till", description: notes });
+  }, [productsLoading, customersLoading, authUser?.orgId, authUser?.id, paintDraft, toast]);
 
   const localDraftBootstrapped = useRef(false);
   useEffect(() => {
@@ -1651,10 +1673,10 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
             <ProblemButton compact />
           </div>
           <nav aria-label="Order sections" className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm">
-            <a className="underline" href="#order-products">Products</a>
-            <a className="underline" href="#order-fulfilment">Fulfilment</a>
-            <a className="underline" href="#order-customer">Customer</a>
-            <a className="underline" href="#order-payment" data-testid="mobile-checkout-button">Payment</a>
+            <a className="inline-flex min-h-11 items-center underline" href="#order-products">Products</a>
+            <a className="inline-flex min-h-11 items-center underline" href="#order-fulfilment">Fulfilment</a>
+            <a className="inline-flex min-h-11 items-center underline" href="#order-customer">Customer</a>
+            <a className="inline-flex min-h-11 items-center underline" href="#order-payment" data-testid="mobile-checkout-button">Payment</a>
           </nav>
           <MyShiftSummary />
         </div>
