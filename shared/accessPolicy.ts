@@ -596,6 +596,7 @@ export const ACCESS_POLICY: readonly RouteRule[] = [
   // Customer intelligence.
   { method: "GET", path: "/api/customers/intelligence", minRole: "MANAGER", reason: CUSTOMER_INTEL },
   { method: "GET", path: "/api/customers/:id/intelligence", minRole: "MANAGER", reason: CUSTOMER_INTEL },
+  { method: "GET", path: "/api/customers/:id/orders", minRole: "MANAGER", reason: CUSTOMER_INTEL },
 
   // Payroll (the per-person table; rows are filtered by role in the handler).
   { method: "GET", path: "/api/cashier-analytics", minRole: "MANAGER", reason: PAY },

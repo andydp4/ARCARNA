@@ -51,6 +51,10 @@ import { PosTopSellers } from "@/components/pos-top-sellers";
 import { PosCheckoutStep, type OrderExpense, type TenderLeg } from "@/components/pos-checkout-step";
 import { freshSplitLegs, hasUnchosenMethod } from "@/lib/splitTender";
 import { classifyOrderDate, localIsoDate } from "@shared/orders/orderDate";
+import { isAtLeast } from "@shared/accessPolicy";
+
+const ORDER_FORM_DRAFT_KEY = "arcarna.orderFormDraft";
+import { PosCustomerHistory } from "@/components/pos-customer-history";
 import { clockAfterMinutes } from "@shared/time/tradingDay";
 import { useOrgTimezone } from "@/hooks/useDefaultTradingDay";
 import { posPrice, type PosProduct, type PosChannel } from "@/components/pos-types";
@@ -424,6 +428,86 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
       description: notes.length ? `Check it before taking payment: ${notes.join("; ")}.` : "Check it, then take payment.",
     });
   }, [issueDraftConsumed, productsLoading, customersLoading, products, customers, toast]);
+
+  const orderDraftRestored = useRef(false);
+  useEffect(() => {
+    if (orderDraftRestored.current || productsLoading || customersLoading) return;
+    orderDraftRestored.current = true;
+    const raw = sessionStorage.getItem(ORDER_FORM_DRAFT_KEY);
+    if (!raw) return;
+    sessionStorage.removeItem(ORDER_FORM_DRAFT_KEY);
+    try {
+      const data = JSON.parse(raw) as {
+        v?: number;
+        cart?: { productId: string; quantity: number; customPrice: number }[];
+        customerId?: string | null;
+        paymentMethod?: string;
+        fulfilmentMethod?: "collection" | "delivery";
+        orderDate?: string;
+        dueTime?: string;
+        dueMinutes?: number | null;
+        channel?: PosChannel;
+        scroll?: number;
+      };
+      if (data.v !== 1) return;
+      const byId = new Map(products.map((product) => [product.id, product]));
+      const lines: CartItem[] = [];
+      for (const line of data.cart ?? []) {
+        const product = byId.get(line.productId);
+        if (!product) continue;
+        lines.push({
+          product,
+          quantity: line.quantity,
+          customPrice: line.customPrice,
+          subtotal: line.quantity * line.customPrice,
+        });
+      }
+      if (lines.length > 0) setCart(lines);
+      const customer = customers.find((row) => row.id === data.customerId);
+      if (customer) setSelectedCustomer(customer);
+      if (data.paymentMethod) setPaymentMethod(data.paymentMethod);
+      if (data.fulfilmentMethod) setFulfilmentMethod(data.fulfilmentMethod);
+      if (data.orderDate) setOrderDate(data.orderDate);
+      if (data.channel === "pos" || data.channel === "phone" || data.channel === "whatsapp") setChannel(data.channel);
+      setDueTouched(true);
+      setDueMinutes(data.dueMinutes ?? null);
+      setDueTime(data.dueTime ?? "");
+      const scroll = data.scroll ?? 0;
+      requestAnimationFrame(() => {
+        document.querySelector<HTMLElement>("[data-testid='order-form-scroll']")?.scrollTo(0, scroll);
+        document.querySelector<HTMLInputElement>("[data-testid='line-product-new']")?.focus();
+      });
+    } catch {
+      // A damaged note is ignored. The till opens empty.
+    }
+  }, [productsLoading, customersLoading, products, customers]);
+
+  const stashOrderDraft = useCallback(() => {
+    try {
+      const scroller = document.querySelector<HTMLElement>("[data-testid='order-form-scroll']");
+      sessionStorage.setItem(
+        ORDER_FORM_DRAFT_KEY,
+        JSON.stringify({
+          v: 1,
+          cart: cart.map((line) => ({
+            productId: line.product.id,
+            quantity: line.quantity,
+            customPrice: line.customPrice,
+          })),
+          customerId: selectedCustomer?.id ?? null,
+          paymentMethod,
+          fulfilmentMethod,
+          orderDate,
+          dueTime,
+          dueMinutes,
+          channel,
+          scroll: scroller?.scrollTop ?? 0,
+        }),
+      );
+    } catch {
+      // If the browser will not store it, opening the past order in a new tab still leaves this sale on screen.
+    }
+  }, [cart, selectedCustomer, paymentMethod, fulfilmentMethod, orderDate, dueTime, dueMinutes, channel]);
 
   // Tax rate must come from the org, not a constant: the till previously
   // showed 10% while the server charged 20%, so the customer was quoted one
@@ -1343,7 +1427,7 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
             </button>
           </div>
         )}
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3 sm:px-6">
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3 sm:px-6" data-testid="order-form-scroll">
           <div className="grid items-start gap-6 @[800px]:grid-cols-[minmax(0,1.6fr)_minmax(16rem,1fr)]">
             <section id="order-products" className="min-w-0">
               {cart.length > 0 && (
@@ -1374,6 +1458,9 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
             <div className="min-w-0 space-y-4">
               <section id="order-customer">
                 <PosCartPanel {...cartPanelProps} showCheckoutButton={false} />
+                {selectedCustomer && isAtLeast((authUser as { role?: string } | null)?.role, "MANAGER") && (
+                  <PosCustomerHistory customerId={selectedCustomer.id} onBeforeLeave={stashOrderDraft} />
+                )}
               </section>
               <PosCheckoutStep
                 continuous

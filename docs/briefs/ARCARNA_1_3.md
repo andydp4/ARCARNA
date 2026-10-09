@@ -14,11 +14,11 @@ Also shipped:
 - The payment button says **Create order** for cash, card, transfer, credit, gift card and a split. Personal use still says **Log personal use**. One line under the payment choices says what that choice does.
 - Empty search is Light Blue. A filled price or quantity is the darker Truth Blue with white text. After a payment choice, the others are charcoal and still selectable.
 - Order date and due time open from the field or the icon. A +minutes choice is saved as a clock time in the shop’s timezone, so it is not added again later. A future day asks for a clock time instead. A time that has already passed is named.
+- Managers and admins see **View all past orders** on the selected customer. The list loads in pages. Opening an order remembers the sale being built, and Back to the order puts it back.
 
 ## Still to do, in this order
 
-1. **Customer history.** View all past orders for the selected customer, then open the real order and come back to the draft. Managers and admins.
-2. **Actual profit.** One labelled total: takings minus stock cost minus order expenses minus overheads. The margins report is goods margin only. Profit Truths already has the fuller sum under “Bottom line”.
+1. **Actual profit.** One labelled total: takings minus stock cost minus order expenses minus overheads. The margins report is goods margin only. Profit Truths already has the fuller sum under “Bottom line”.
 3. **Change the customer** on an order that is still open (left as walk-in, or the wrong person). Completed orders, credit and points wait.
 4. **Autosaved drafts** on the server, with a Drafts list on the board. Closing the form must not lose the lines.
 5. **Order numbers** starting 440400001 and invoice numbers starting 440000001, allocated on the server, without renumbering anything already issued. Check the live counters before seeding.
