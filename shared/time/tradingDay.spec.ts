@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  clockAfterMinutes,
   currentTradingDay,
+  isDueClockPast,
   lastClosedTradingDay,
   localInstant,
   localInstantAt,
@@ -156,5 +158,25 @@ describe("localInstantAt — a minute-granular promise like a due time", () => {
     expect(() => localInstantAt("2026-01-12", "2:30 PM", LONDON)).toThrow(RangeError);
     expect(() => localInstantAt("2026-01-12", "24:00", LONDON)).toThrow(RangeError);
     expect(() => localInstantAt("2026-01-12", "09:60", LONDON)).toThrow(RangeError);
+  });
+});
+
+describe("a +minutes chip becomes a clock time in the shop", () => {
+  it("reads 30 minutes later in London, including across midnight", () => {
+    // 23:50 UTC is 23:50 in London in January. Thirty minutes later is 00:20.
+    expect(clockAfterMinutes(30, LONDON, new Date("2026-01-12T23:50:00Z"))).toBe("00:20");
+  });
+
+  it("uses British Summer Time, not the device clock", () => {
+    // 12:00 UTC is 13:00 in London in July. Forty-five minutes later is 13:45.
+    expect(clockAfterMinutes(45, LONDON, new Date("2026-07-12T12:00:00Z"))).toBe("13:45");
+  });
+
+  it("calls a time past only when that calendar day has already reached it", () => {
+    const now = new Date("2026-01-12T15:00:00Z");
+    expect(isDueClockPast("2026-01-12", "14:00", LONDON, now)).toBe(true);
+    expect(isDueClockPast("2026-01-12", "16:00", LONDON, now)).toBe(false);
+    expect(isDueClockPast("2026-01-13", "09:00", LONDON, now)).toBe(false);
+    expect(isDueClockPast("2026-01-11", "18:00", LONDON, now)).toBe(true);
   });
 });

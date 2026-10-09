@@ -16,6 +16,7 @@
 import { PosDeliveryDetails, type PosDeliveryState } from "@/components/pos-delivery-details";
 import {
   ArrowLeft,
+  CalendarDays,
   Clock3,
   CreditCard,
   DollarSign,
@@ -50,6 +51,8 @@ import {
   orderDateWindow,
 } from "@shared/orders/orderDate";
 import { cn } from "@/lib/utils";
+import { isDueClockPast } from "@shared/time/tradingDay";
+import { useRef } from "react";
 import type { PosChannel } from "@/components/pos-types";
 import type { OpsBoardStaffRow } from "@/hooks/useOpsBoard";
 
@@ -65,6 +68,19 @@ const CHANNEL_OPTIONS: { value: Extract<PosChannel, "pos" | "phone" | "whatsapp"
 
 /** Quick-pick promise lengths, minutes from now (brief, "Form embedding"). */
 const DUE_CHIP_MINUTES = [5, 10, 15, 30, 45, 60] as const;
+
+/** Opens the browser's own date or time picker. Typing still works if it cannot. */
+function openNativePicker(input: HTMLInputElement | null) {
+  if (!input) return;
+  input.focus();
+  const showPicker = (input as HTMLInputElement & { showPicker?: () => void }).showPicker;
+  if (typeof showPicker !== "function") return;
+  try {
+    showPicker.call(input);
+  } catch {
+    // Not a user gesture, or this browser has no picker. The focused field is the fallback.
+  }
+}
 
 /** Radix `Select` cannot hold an item with an empty string value — this is
  *  the "let the default-owner rule decide" option, mapped to/from `""`. */
@@ -154,6 +170,8 @@ export type PosCheckoutStepProps = {
   onClearDue: () => void;
   /** A pre-order dated ahead needs a due time before payment (brief, "Pre-orders"). */
   duePreorderRequired: boolean;
+  /** Shop timezone, so "+30 minutes" becomes a clock time there. */
+  timeZone: string;
 
   /** Who is to deal with the order — "" defers to the default-owner rule. */
   assigneeUserId: string;
@@ -411,21 +429,13 @@ export function PosCheckoutStep(p: PosCheckoutStepProps) {
               </div>
             )}
 
-            <div>
-              <label className="mb-2 block text-sm font-medium text-metal-warm-white" htmlFor="order-date">
-                Order date
-              </label>
-              <Input
-                id="order-date"
-                type="date"
-                value={p.orderDate}
-                min={window.min}
-                max={window.max}
-                onChange={(e) => p.setOrderDate(e.target.value || today)}
-                className="min-h-[44px]"
-                aria-describedby="order-date-hint"
-                data-testid="input-order-date"
-              />
+            <OrderDateField
+              id="order-date"
+              value={p.orderDate}
+              min={window.min}
+              max={window.max}
+              onChange={(value) => p.setOrderDate(value || today)}
+            />
               {/* Said at the till, before the sale goes through: a dated order
                   lands on that day's figures and is marked as keyed in late or
                   ahead, so nobody mistakes it for a live sale afterwards. */}
@@ -438,7 +448,6 @@ export function PosCheckoutStep(p: PosCheckoutStepProps) {
                       ? `Pre-order: recorded against ${p.orderDate} and marked as a pre-order.`
                       : `Today. Up to ${BACKDATE_LIMIT_DAYS} days back for a missed day, or ${PREORDER_LIMIT_DAYS} days ahead for a pre-order.`}
               </p>
-            </div>
           </section>
 
           <section>
@@ -480,39 +489,38 @@ export function PosCheckoutStep(p: PosCheckoutStepProps) {
                 </button>
               )}
             </div>
-            <div className="flex flex-wrap gap-2" role="radiogroup" aria-labelledby="due-label">
-              {DUE_CHIP_MINUTES.map((minutes) => (
-                <button
-                  key={minutes}
-                  type="button"
-                  role="radio"
-                  aria-checked={p.dueMinutes === minutes && !p.dueTime}
-                  onClick={() => p.onSelectDueMinutes(minutes)}
-                  className={cn(
-                    "min-h-[44px] rounded-full border px-3 text-sm font-medium transition-colors",
-                    p.dueMinutes === minutes && !p.dueTime
-                      ? "border-truth bg-truth text-truth-foreground"
-                      : "border-metal-edge text-metal-warm-white hover:border-metal-titanium",
-                  )}
-                  data-testid={`chip-due-${minutes}`}
-                >
-                  +{minutes}m
-                </button>
-              ))}
-            </div>
-            <div className="mt-2 flex items-center gap-2">
-              <label htmlFor="due-time" className="shrink-0 text-xs text-metal-muted">
-                or a time
-              </label>
-              <Input
-                id="due-time"
-                type="time"
-                value={p.dueTime}
-                onChange={(e) => p.onSelectDueTime(e.target.value)}
-                className="min-h-[44px] w-32"
-                data-testid="input-due-time"
-              />
-            </div>
+            {kind === "preorder" ? (
+              <p className="text-sm text-metal-muted">
+                This is a future day. Choose a clock time. A number of minutes from now does not apply.
+              </p>
+            ) : (
+              <div className="flex flex-wrap gap-2" role="radiogroup" aria-labelledby="due-label">
+                {DUE_CHIP_MINUTES.map((minutes) => (
+                  <button
+                    key={minutes}
+                    type="button"
+                    role="radio"
+                    aria-checked={p.dueMinutes === minutes}
+                    onClick={() => p.onSelectDueMinutes(minutes)}
+                    className={cn(
+                      "min-h-[44px] rounded-full border px-3 text-sm font-medium transition-colors",
+                      p.dueMinutes === minutes
+                        ? "border-truth bg-truth text-truth-foreground"
+                        : "border-metal-edge text-metal-warm-white hover:border-metal-titanium",
+                    )}
+                    data-testid={`chip-due-${minutes}`}
+                  >
+                    +{minutes}m
+                  </button>
+                ))}
+              </div>
+            )}
+            <DueTimeField value={p.dueTime} onChange={p.onSelectDueTime} />
+            {p.dueTime && isDueClockPast(p.orderDate, p.dueTime, p.timeZone) && (
+              <p className="mt-2 text-xs font-medium text-warning" data-testid="text-due-past">
+                That time has already passed.
+              </p>
+            )}
             {p.duePreorderRequired && p.dueMinutes == null && !p.dueTime && (
               <p className="mt-2 text-xs font-medium text-warning" data-testid="text-due-required-hint">
                 Pre-orders need a due time before payment.
@@ -690,6 +698,85 @@ export function PosCheckoutStep(p: PosCheckoutStepProps) {
         </div>
       </div>
       )}
+    </div>
+  );
+}
+
+function OrderDateField({
+  id,
+  value,
+  min,
+  max,
+  onChange,
+}: {
+  id: string;
+  value: string;
+  min: string;
+  max: string;
+  onChange: (value: string) => void;
+}) {
+  const ref = useRef<HTMLInputElement>(null);
+  return (
+    <div>
+      <label className="mb-2 block text-sm font-medium text-metal-warm-white" htmlFor={id}>
+        Order date
+      </label>
+      <div className="flex gap-2">
+        <Input
+          ref={ref}
+          id={id}
+          type="date"
+          lang="en-GB"
+          value={value}
+          min={min}
+          max={max}
+          onClick={() => openNativePicker(ref.current)}
+          onChange={(e) => onChange(e.target.value)}
+          className={cn("min-h-11 flex-1", value ? "pos-field-filled" : "pos-field-empty")}
+          aria-describedby="order-date-hint"
+          data-testid="input-order-date"
+        />
+        <Button
+          type="button"
+          variant="outline"
+          className="h-11 w-11 shrink-0"
+          aria-label="Open the calendar"
+          onClick={() => openNativePicker(ref.current)}
+        >
+          <CalendarDays className="h-4 w-4" aria-hidden />
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function DueTimeField({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  const ref = useRef<HTMLInputElement>(null);
+  return (
+    <div className="mt-2 flex items-center gap-2">
+      <label htmlFor="due-time" className="shrink-0 text-xs text-metal-muted">
+        Clock time, 24-hour
+      </label>
+      <Input
+        ref={ref}
+        id="due-time"
+        type="time"
+        lang="en-GB"
+        value={value}
+        onClick={() => openNativePicker(ref.current)}
+        onChange={(e) => onChange(e.target.value)}
+        className={cn("min-h-11 w-36", value ? "pos-field-filled" : "pos-field-empty")}
+        data-testid="input-due-time"
+      />
+      <Button
+        type="button"
+        variant="outline"
+        className="h-11 w-11 shrink-0"
+        aria-label="Open the time picker"
+        onClick={() => openNativePicker(ref.current)}
+      >
+        <Clock3 className="h-4 w-4" aria-hidden />
+      </Button>
     </div>
   );
 }

@@ -51,6 +51,8 @@ import { PosTopSellers } from "@/components/pos-top-sellers";
 import { PosCheckoutStep, type OrderExpense, type TenderLeg } from "@/components/pos-checkout-step";
 import { freshSplitLegs, hasUnchosenMethod } from "@/lib/splitTender";
 import { classifyOrderDate, localIsoDate } from "@shared/orders/orderDate";
+import { clockAfterMinutes } from "@shared/time/tradingDay";
+import { useOrgTimezone } from "@/hooks/useDefaultTradingDay";
 import { posPrice, type PosProduct, type PosChannel } from "@/components/pos-types";
 import { PosCartPanel, type PosCartPanelProps, type PosCartItem, type PosCustomer } from "@/components/pos-cart-panel";
 import { ActionLoader } from "@/components/action-loader";
@@ -182,6 +184,7 @@ function MyShiftSummary() {
 
 export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) {
   const { toast } = useToast();
+  const timeZone = useOrgTimezone();
   const [narrowRef] = usePosNarrow();
   const [cart, setCart] = useState<CartItem[]>([]);
   // Sale funnel (v1.2 Phase 8B): the step only, never what is on the sale.
@@ -792,26 +795,36 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
     setRedeemInput("");
   }, [selectedCustomer?.id]);
 
-  // Suggested due time follows fulfilment/channel (brief: delivery pre-selects
-  // +45, Phone/WhatsApp pre-select +30) until the cashier picks — or explicitly
-  // clears — one themselves.
+  // Suggested due time follows fulfilment/channel (delivery +45, phone or
+  // WhatsApp +30) until the cashier picks or clears one. The suggestion is
+  // stored as a clock time in the shop's timezone, so it is not added again
+  // when the same order is opened later. A future day has no suggestion:
+  // "in 30 minutes" does not mean anything on a day that has not started.
   useEffect(() => {
     if (dueTouched) return;
-    setDueTime("");
-    if (fulfilmentMethod === "delivery") {
-      setDueMinutes(45);
-    } else if (channel === "phone" || channel === "whatsapp") {
-      setDueMinutes(30);
-    } else {
+    const verdict = classifyOrderDate(orderDate, localIsoDate());
+    if (verdict.ok && verdict.dating.kind === "preorder") {
       setDueMinutes(null);
+      setDueTime("");
+      return;
     }
-  }, [fulfilmentMethod, channel, dueTouched]);
+    const minutes =
+      fulfilmentMethod === "delivery" ? 45 : channel === "phone" || channel === "whatsapp" ? 30 : null;
+    setDueMinutes(minutes);
+    setDueTime(minutes == null ? "" : clockAfterMinutes(minutes, timeZone));
+  }, [fulfilmentMethod, channel, dueTouched, orderDate, timeZone]);
 
   const selectDueMinutes = useCallback((minutes: number) => {
     setDueTouched(true);
-    setDueTime("");
-    setDueMinutes((current) => (current === minutes ? null : minutes));
-  }, []);
+    setDueMinutes((current) => {
+      if (current === minutes) {
+        setDueTime("");
+        return null;
+      }
+      setDueTime(clockAfterMinutes(minutes, timeZone));
+      return minutes;
+    });
+  }, [timeZone]);
 
   const selectDueTime = useCallback((time: string) => {
     setDueTouched(true);
@@ -1411,6 +1424,7 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
                 onSelectDueTime={selectDueTime}
                 onClearDue={clearDue}
                 duePreorderRequired={isPreorderDate}
+                timeZone={timeZone}
                 assigneeUserId={assigneeUserId}
                 setAssigneeUserId={setAssigneeUserId}
                 staff={staff}
