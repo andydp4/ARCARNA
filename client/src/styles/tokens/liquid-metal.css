@@ -473,8 +473,9 @@
    Order form, 1.3. Empty fields are Light Blue; a filled field or the
    chosen option is Truth Blue strong with white text. Unselected options
    in a group that already has a choice are charcoal — still tappable.
-   Recorded in docs/briefs/ARCARNA_1_3.md. The brand PDF does not use
-   Light Blue as a field fill; this is the agreed order-form treatment. */
+   Recorded in docs/specs/ARCARNA_DESIGN_SYSTEM_SPECIFICATION.md §21 and
+   docs/briefs/ARCARNA_1_3.md. The brand PDF does not use Light Blue as a
+   field fill; this is the agreed order-form treatment. */
 .pos-field-empty {
   background-color: #b6d9ff !important;
   color: #0c1c32 !important;
