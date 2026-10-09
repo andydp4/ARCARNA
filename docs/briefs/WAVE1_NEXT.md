@@ -1,5 +1,7 @@
 # Wave 1 — Next 3 agents (ready to launch)
 
+**Historical.** The O1 monitor URL in this file (`viger.cloud/midnight`) is not the live health check. See [`../CURRENT_STATE.md`](../CURRENT_STATE.md).
+
 **Prerequisite:** Wave 0 merged on `main` (H1–H4, O4, E1).
 
 **Merge order used:** docs (H2/H4/O4) → H1+H3 → E1.

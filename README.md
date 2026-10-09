@@ -1,6 +1,8 @@
 # ARCARNA EPOS
 
-Point-of-sale and business management system. See [ARCHITECTURE.md](./ARCHITECTURE.md) and [RBAC.md](./RBAC.md) for design details.
+Point-of-sale and business management system. Production is [https://arcarna.viger.cloud/](https://arcarna.viger.cloud/). What is live, and which older docs to ignore, is [docs/CURRENT_STATE.md](./docs/CURRENT_STATE.md).
+
+See [ARCHITECTURE.md](./ARCHITECTURE.md) and [RBAC.md](./RBAC.md) for design details.
 
 ### Docs
 

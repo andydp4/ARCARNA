@@ -1,10 +1,10 @@
 # Wave 12 — Launch & testing readiness
 
-**Status:** **Deployed + QA signed off** (`main` @ PR **#35** + auth/deploy fixes **#36–#39**, **#37**).
+**This is not current production.** `main` has moved through v1.2 and pull request #230. See [`../CURRENT_STATE.md`](../CURRENT_STATE.md). Health curls in this file that use `viger.cloud/midnight` are the June 2026 check, and they do not hit the API today.
+
+**Status when signed off:** deployed (`main` @ PR **#35** + auth/deploy fixes **#36–#39**, **#37**).
 
 **Prerequisite:** Wave 11 on `main` and live — [`WAVE11_LAUNCH.md`](./WAVE11_LAUNCH.md).
-
-**Next work:** [`WAVE13_NEXT.md`](./WAVE13_NEXT.md)
 
 ---
 

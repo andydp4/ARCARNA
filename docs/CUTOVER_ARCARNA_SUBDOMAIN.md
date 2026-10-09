@@ -1,7 +1,10 @@
 # Cutover to arcarna.viger.cloud — plain-English checklist
 
-Goal: serve the app at **https://arcarna.viger.cloud/** (its own subdomain, at the root —
-no `/arcarna` in the URL). No one is using the app yet, so this is a clean switch.
+**Done.** Checked 3 October 2026: `https://arcarna.viger.cloud/api/health` returns ok, Clerk is the auth provider, and the app shell is served at the site root. The steps below are the record of how that was set up, not a pending job.
+
+One leftover: live nginx on `viger.cloud` still redirects `/arcarna/…` to `https://arcarna.viger.cloud/arcarna/…`, and that API path 404s. `deploy/nginx-viger.cloud.conf.example` now strips the prefix. Reload nginx from that example when you next edit the server. Until then, monitors must call `https://arcarna.viger.cloud/api/health` directly.
+
+Goal: serve the app at **https://arcarna.viger.cloud/** (its own subdomain, at the root — no `/arcarna` in the URL).
 
 **What's already done in the code** (you don't need to touch this):
 - The app supports running at the site root.
@@ -116,7 +119,7 @@ sudo nginx -t && sudo systemctl reload nginx
 sudo certbot --nginx -d viger.cloud -d www.viger.cloud
 ```
 That config serves `/var/www/viger.cloud` at the root and 301-redirects the old
-`viger.cloud/arcarna` + `/midnight` URLs to `https://arcarna.viger.cloud`.
+`viger.cloud/arcarna` and `/midnight` URLs to `https://arcarna.viger.cloud/`, stripping the old prefix so `/arcarna/api/health` lands on `/api/health`.
 
 **The shop window** lists every app with its colour and target subdomain:
 | App | Colour | Subdomain | Status |
@@ -150,4 +153,4 @@ If anyone bookmarked the old path, add redirects in the **viger.cloud** nginx bl
   `tests/e2e/smoke.spec.ts`, `tests/a11y/critical-paths.spec.ts`, `tests/visual/pos-tablet.spec.ts`,
   `tests/helpers/e2eTenant.ts`). The `/midnight`→`/arcarna` smoke assertion was removed — at root
   the app doesn't register that redirect (it's handled at nginx on the old domain).
-- ⏳ **Your action:** point UptimeRobot / any monitor at `https://arcarna.viger.cloud/api/health`.
+- ⏳ **Your action if the monitor was never moved:** point UptimeRobot at `https://arcarna.viger.cloud/api/health`. A monitor on `viger.cloud/arcarna/api/health` or `viger.cloud/midnight/api/health` is not checking health.

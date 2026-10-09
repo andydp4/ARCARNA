@@ -36,6 +36,8 @@ Migrations currently applied by `apply-migrations-pm2.sh`:
 | `008_auth_subject.sql` | Auth subject columns (`auth_user_id`, provider) on users / allow-list |
 | `009_domain_outbox_and_workers.sql` | `domain_outbox` (legacy), `event_outbox`, `job_queue`, `processed_events`, `worker_run_logs`, `dead_letters` |
 
+**The table above is only the early set.** `migrations/` is the full list, applied in filename order. As of 3 October 2026 the highest file on `main` is `232_label_settings.sql`. See [`CURRENT_STATE.md`](./CURRENT_STATE.md).
+
 **Canonical Drizzle definitions:** [`shared/schema.ts`](../shared/schema.ts) must stay in sync with applied migrations.
 
 ### Deprecated (applied but do not write)
