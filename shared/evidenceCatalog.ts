@@ -118,7 +118,7 @@ export const REPORT_CATALOG: ReportCatalogEntry[] = [
     tier: 2,
     frequency: "WEEKLY",
     purpose:
-      "Shows the actual realised margin per product based on what you genuinely sold this week — real margin under dynamic pricing.",
+      "Margin on the goods sold this week: what you sold, minus what the stock cost. Order expenses and overheads are not taken off. Actual profit, after those, is on Profit Truths.",
     route: "/reports/weekly-margin",
     formats: ALL,
     status: "available",

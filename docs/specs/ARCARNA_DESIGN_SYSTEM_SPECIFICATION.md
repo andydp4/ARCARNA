@@ -265,3 +265,27 @@ rg -n "fas fa-|lm-btn-metal|to-\[hsl\(210, ?40%" client/src && echo "REFINEMENT 
 - [ ] Single dark forged-metal theme; legacy light product tokens deprecated.
 - [ ] Focus ring `--truth-blue-bright`; targets ≥ 44px; `npm run test:a11y` green.
 - [ ] Charts single-hue-first on metal, with non-colour labels.
+
+## 21. Order form field states (1.3)
+
+The till’s order form uses a small set of field states. They live in
+`client/src/styles/tokens/liquid-metal.css` (`.pos-field-empty`, `.pos-field-filled`,
+`.pos-qty-value`, `.pos-qty-step`, `.pos-pay-option`). This is an agreed exception to the
+brand PDF, which does not use Light Blue as a field fill, and to §2’s “no hardcoded colour”
+rule for these classes only. The rest of the product stays on the tokens in §3.
+
+Navy text on an empty field is `#0C1C32`. Charcoal is `#292D33`. Light Blue is `#B6D9FF`.
+Filled and selected fields use `--truth-blue-strong` with white text. Targets are at least
+44px tall.
+
+| State | What the cashier sees | How it is marked |
+|-------|------------------------|------------------|
+| Empty | Light Blue fill, navy text. Placeholder text is `#123B78`. Product search, and date or time before a value, use this. | `.pos-field-empty` |
+| Filled | Truth Blue strong, white text. Quantity, price, and a date or time that has a value. | `.pos-field-filled`, `.pos-qty-value` |
+| Selected | The chosen payment is Truth Blue strong with white text. | `.pos-pay-option[aria-checked="true"]` |
+| Unselected | After a payment is chosen, the others turn charcoal with `#F6F8FB` text. They stay tappable. Before any choice, every payment option is Light Blue. Minus and plus are always charcoal. | `.pos-pay-option` inside a group that has a choice; `.pos-qty-step` |
+| Read-only | Not an input. The product name and code are Light Blue text. The line total is `#F6F8FB`. A past order is a page of text, not a filled field. | `.pos-product-name`, `.pos-product-code`, `.pos-line-total` |
+| Focus | A 2px ring. On a filled quantity it is white, so it shows against Truth Blue strong. On a payment option it is the titanium metal token. | `focus-visible:ring-2` |
+| Invalid | The quantity keeps its filled colour and gains a danger ring, `aria-invalid`, and the sentence “Enter a quantity above zero. Use Remove to take the line off.” Create order stays blocked. A time that has already passed is named in the warning colour. | `ring-destructive`, `text-destructive`, `text-warning` |
+| Disabled | While the order is being created, fields and the minus/plus buttons drop to half opacity and do not accept taps. The colour underneath does not change. | `disabled:opacity-50` on the shared input and button |
+| Autosave | Words under “New order”, in muted metal text: Saving, Saved, Waiting to sync, Could not save. A clash with another till is a warning panel with two actions, not a recolour of the fields. | `order-draft-status`, `order-draft-conflict` |

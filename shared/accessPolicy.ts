@@ -567,8 +567,14 @@ export const ACCESS_POLICY: readonly RouteRule[] = [
   { method: "POST", path: "/api/customers/:id/saved-address", minRole: "CASHIER", reason: DELIVERY },
   { method: "POST", path: "/api/orders/board/phone-search", minRole: "CASHIER", reason: PHONE_LOOKUP },
   { method: "POST", path: "/api/orders/:id/customer-phone", minRole: "CASHIER", reason: DELIVERY },
+  { method: "PATCH", path: "/api/orders/:id/customer", minRole: "MANAGER", reason: CUSTOMER_VIEW },
   { method: "PATCH", path: "/api/orders/:id/delivery", minRole: "CASHIER", reason: DELIVERY },
   { method: "POST", path: "/api/orders/search", minRole: "CASHIER", reason: ORDER_HISTORY },
+  { method: "GET", path: "/api/order-drafts", minRole: "CASHIER", reason: ORDER_HISTORY },
+  { method: "POST", path: "/api/order-drafts", minRole: "CASHIER", reason: ORDER_HISTORY },
+  { method: "GET", path: "/api/order-drafts/:id", minRole: "CASHIER", reason: ORDER_HISTORY },
+  { method: "PUT", path: "/api/order-drafts/:id", minRole: "CASHIER", reason: ORDER_HISTORY },
+  { method: "POST", path: "/api/order-drafts/:id/close", minRole: "CASHIER", reason: ORDER_HISTORY },
 
   // My run (v1.2). Whose run and who may fail a delivery are checked per row
   // in the handler; these rows are the floor.
@@ -596,6 +602,7 @@ export const ACCESS_POLICY: readonly RouteRule[] = [
   // Customer intelligence.
   { method: "GET", path: "/api/customers/intelligence", minRole: "MANAGER", reason: CUSTOMER_INTEL },
   { method: "GET", path: "/api/customers/:id/intelligence", minRole: "MANAGER", reason: CUSTOMER_INTEL },
+  { method: "GET", path: "/api/customers/:id/orders", minRole: "MANAGER", reason: CUSTOMER_INTEL },
 
   // Payroll (the per-person table; rows are filtered by role in the handler).
   { method: "GET", path: "/api/cashier-analytics", minRole: "MANAGER", reason: PAY },

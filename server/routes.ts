@@ -31,6 +31,7 @@ import { registerContactAccessRoutes } from "./routes/contactAccess";
 import { registerStaffPerformanceRoutes } from "./routes/staffPerformance";
 import { registerCustomerRoutes } from "./routes/customers";
 import { registerOrderRoutes } from "./routes/orders";
+import { registerOrderDraftRoutes } from "./routes/orderDrafts";
 import { registerOrderTransitionRoutes } from "./routes/orderTransitions";
 import { registerMyRunRoutes } from "./routes/myRun";
 import { registerOperationsRoutes } from "./routes/operations";
@@ -116,6 +117,7 @@ export async function registerRoutes(app: Express): Promise<void> {
   registerCustomerRoutes(app, scoped);
   registerContactAccessRoutes(app, scoped);
   registerOrderRoutes(app, scoped);
+  registerOrderDraftRoutes(app, scoped);
   registerSaleIssueRoutes(app, scoped);
   registerOrderTransitionRoutes(app, scoped);
   registerMyRunRoutes(app, scoped);

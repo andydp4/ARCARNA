@@ -73,7 +73,10 @@ export const organizations = pgTable("organizations", {
   logoUrl: varchar("logo_url", { length: 2048 }),
   invoiceTemplate: varchar("invoice_template", { length: 64 }).default("standard"),
   invoicePrefix: varchar("invoice_prefix", { length: 20 }).default("INV"),
-  invoiceStartNumber: integer("invoice_start_number").default(1000),
+  invoiceStartNumber: integer("invoice_start_number").default(440000001),
+  /** Next shop order number (migration 235). NULL until the first. */
+  orderStartNumber: integer("order_start_number").default(440400001),
+  orderLastNumber: integer("order_last_number"),
   paymentTerms: varchar("payment_terms", { length: 255 }).default("Net 30"),
   /** The last invoice number issued; NULL until the first (migration 085). */
   invoiceLastNumber: integer("invoice_last_number"),
@@ -1554,6 +1557,32 @@ export type SaleIssue = typeof saleIssues.$inferSelect;
 export type InsertSaleIssue = typeof saleIssues.$inferInsert;
 
 /**
+ * An order the till has started but not created. Saving one does not take
+ * payment, move stock, or issue an invoice. `revision` goes up on every
+ * save so two tills cannot silently overwrite each other. (migration 234)
+ */
+export const orderDrafts = pgTable(
+  "order_drafts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .references(() => organizations.id, { onDelete: "cascade" })
+      .notNull(),
+    userId: varchar("user_id", { length: 255 }).notNull(),
+    revision: integer("revision").notNull().default(1),
+    status: varchar("status", { length: 16 }).notNull().default("open"),
+    label: varchar("label", { length: 120 }).notNull().default("Draft"),
+    payload: jsonb("payload").notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("order_drafts_owner_idx").on(table.orgId, table.userId, table.status),
+    check("order_drafts_status_check", sql`${table.status} IN ('open', 'submitted', 'discarded')`),
+  ],
+);
+export type OrderDraft = typeof orderDrafts.$inferSelect;
+
+/**
  * A tender leg as the till submits it. The legs must sum to the order total —
  * a split that does not add up is a sale where some money is unaccounted for,
  * which is exactly the state this table exists to make impossible.
@@ -1795,6 +1824,9 @@ export const orders = pgTable("orders", {
   // landed instead of recording the sale twice. NULL for orders that did not
   // come from the till (web, API). (migration 080)
   clientOrderId: varchar("client_order_id", { length: 64 }),
+  // The shop's order number (migration 235). NULL on orders from before it:
+  // those still show the start of the reference they already had.
+  orderNumber: integer("order_number"),
   // How the total was reached, from the one priceOrder() the till and server
   // share (v1.2 Phase 1B, shared/pricing/priceOrder.ts):
   //   subtotal − tierDiscount − promoDiscount + vatAmount − pointsDiscount = total
@@ -1839,6 +1871,9 @@ export const orders = pgTable("orders", {
   uniqueIndex("orders_org_client_order_id_uq")
     .on(table.orgId, table.clientOrderId)
     .where(sql`${table.clientOrderId} IS NOT NULL`),
+  uniqueIndex("orders_org_order_number_uq")
+    .on(table.orgId, table.orderNumber)
+    .where(sql`${table.orderNumber} IS NOT NULL`),
   index("orders_dated_idx")
     .on(table.orgId, table.dateKind, table.createdAt)
     .where(sql`${table.dateKind} <> 'live'`),
@@ -1946,6 +1981,8 @@ export const ORDER_EVENT_KINDS = [
   "deleted",
   // A manager's edit of lines/prices, with the money before and after (083).
   "edited",
+  // An open order moved from one customer to another, or off Walk-in (233).
+  "customer_reassigned",
 ] as const;
 export type OrderEventKind = (typeof ORDER_EVENT_KINDS)[number];
 

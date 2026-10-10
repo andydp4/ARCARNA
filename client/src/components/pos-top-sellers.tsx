@@ -8,9 +8,9 @@
  * products that are still in the loaded catalogue, so a chip can never add
  * something the till cannot see.
  */
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Flame } from "lucide-react";
+import { ChevronLeft, ChevronRight, Flame } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatPosPrice, type PosProduct } from "@/components/pos-types";
 
@@ -40,18 +40,44 @@ export function PosTopSellers({ products, onAdd, disabled = false, className }: 
     return out;
   }, [ranked, products]);
 
+  const scroller = useRef<HTMLDivElement>(null);
+  const [more, setMore] = useState(false);
+
+  useEffect(() => {
+    const node = scroller.current;
+    if (!node) return;
+    const measure = () => setMore(node.scrollWidth > node.clientWidth + 8);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [chips.length]);
+
   if (chips.length === 0) return null;
+
+  const nudge = (direction: -1 | 1) => {
+    scroller.current?.scrollBy({ left: direction * 180, behavior: "smooth" });
+  };
 
   return (
     <div className={cn("pos-top-sellers", className)} data-testid="pos-top-sellers">
       <div className="mb-1.5 flex items-center gap-1.5 text-xs uppercase tracking-wide text-metal-muted">
         <Flame className="h-3.5 w-3.5" aria-hidden />
         Top sellers
+        {more && <span className="normal-case tracking-normal">More along the row</span>}
+        <span className="ml-auto flex">
+          <button type="button" className="inline-flex h-11 w-11 items-center justify-center rounded-md" aria-label="Previous top sellers" onClick={() => nudge(-1)}>
+            <ChevronLeft className="h-4 w-4" aria-hidden />
+          </button>
+          <button type="button" className="inline-flex h-11 w-11 items-center justify-center rounded-md" aria-label="Next top sellers" onClick={() => nudge(1)}>
+            <ChevronRight className="h-4 w-4" aria-hidden />
+          </button>
+        </span>
       </div>
       {/* One row, scrolls sideways under the thumb. Wrapping would push the
           lines below the fold on a phone, which is the space this strip has
           to earn. */}
-      <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1" role="list" aria-label="Top sellers">
+      <div ref={scroller} className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1" role="list" aria-label="Top sellers">
         {chips.map((product) => {
           const out = product.stock <= 0;
           return (

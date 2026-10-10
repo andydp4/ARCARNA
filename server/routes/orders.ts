@@ -14,7 +14,7 @@ import { validateGiftCardCode } from "@shared/giftCards/code";
 import { roundMoney } from "@shared/giftCards/balance";
 import { redeemGiftCardInTx } from "../lib/giftCardService";
 import { resolveUserNames } from "../services/userDisplayName";
-import { currentTradingDay, localInstantAt } from "@shared/time/tradingDay";
+import { currentTradingDay, dueInstantFromClock, localCalendarDate } from "@shared/time/tradingDay";
 import { orgTimeZone } from "../services/tradingDayShift";
 import { publishOpsEvent } from "../services/opsBus";
 import { publishAlertRows, type OpsAlertCreatedRow } from "../services/opsAlerts";
@@ -38,6 +38,31 @@ import {
 } from "../services/saleReference";
 import { attachSaleIssueResubmission, markSaleIssueResolved, unlessSaleIssue } from "../services/saleIssues";
 import { isValidClientOrderId } from "@shared/orders/saleReference";
+import { displayOrderNumber } from "@shared/orders/orderNumber";
+
+/** The number on a receipt: the shop order number, or the old R- reference. */
+function receiptLabel(id: string, orderNumber: number | null | undefined): string {
+  const shown = displayOrderNumber(id, orderNumber);
+  return /^\d+$/.test(shown) ? shown : `R-${shown.toUpperCase()}`;
+}
+
+/** A numbered invoice if one was issued, otherwise an older invoice's own number. */
+async function invoiceNumberForOrder(database: typeof import("../db").db, orderId: string): Promise<string | null> {
+  const { invoices } = await import("@shared/schema");
+  const { and, eq, isNotNull } = await import("drizzle-orm");
+  const [numbered] = await database
+    .select({ invoiceNumber: invoices.invoiceNumber })
+    .from(invoices)
+    .where(and(eq(invoices.orderId, orderId), isNotNull(invoices.sequenceNumber)))
+    .limit(1);
+  if (numbered?.invoiceNumber) return numbered.invoiceNumber;
+  const [legacy] = await database
+    .select({ invoiceNumber: invoices.invoiceNumber })
+    .from(invoices)
+    .where(eq(invoices.orderId, orderId))
+    .limit(1);
+  return legacy?.invoiceNumber ?? null;
+}
 import { plainValidationMessage, saleTooLargeMessage } from "@shared/orders/saleLimits";
 import { recordAdminAudit } from "../adminAudit";
 import { assertChargedAsShown, consumeSalePricingInTx, priceSaleInTx } from "../services/salePricing";
@@ -144,11 +169,15 @@ export function resolveDuePromise(
   receivedAt: Date,
   tradingDate: string,
   timeZone: string,
+  rollIfPast = false,
 ): { ok: true; etaGiven: Date | null } | { ok: false; message: string; code: string } {
   const dueTime = typeof body.dueTime === "string" ? body.dueTime : undefined;
   if (dueTime) {
     try {
-      return { ok: true, etaGiven: localInstantAt(tradingDate, dueTime, timeZone) };
+      return {
+        ok: true,
+        etaGiven: dueInstantFromClock(tradingDate, dueTime, timeZone, receivedAt, rollIfPast),
+      };
     } catch {
       return {
         ok: false,
@@ -627,8 +656,8 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
       const receivedAt = req.offlineQueuedAt ?? new Date();
       const needsRealTimeZone = typeof body.dueTime === "string" && !isBackdated && !isPreorder;
       const timeZone = needsRealTimeZone ? await orgTimeZone(ctx.orgId) : dating.timeZone;
-      const tradingDate = isBackdated || isPreorder ? dating.dating.date : currentTradingDay(timeZone, receivedAt);
-      const duePromise = resolveDuePromise(body, receivedAt, tradingDate, timeZone);
+      const tradingDate = isBackdated || isPreorder ? dating.dating.date : localCalendarDate(receivedAt, timeZone);
+      const duePromise = resolveDuePromise(body, receivedAt, tradingDate, timeZone, !isBackdated && !isPreorder);
       if (!duePromise.ok) {
         return res.status(400).json({ message: duePromise.message, code: duePromise.code });
       }
@@ -1153,6 +1182,7 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
         eventId, // Include eventId in response for tracing
         order: createdOrder ? {
           id: createdOrder.id,
+          orderNumber: createdOrder.order_number ?? null,
           status: createdOrder.status,
           total: createdOrder.total,
           paymentMethod: createdOrder.payment_method,
@@ -1400,7 +1430,9 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
           quantity: item.quantity,
           unitPrice: item.unitPrice,
           total: item.totalPrice,
-        }))
+        })),
+        reference: displayOrderNumber(order.id, order.order_number),
+        invoiceNumber: await invoiceNumberForOrder(mainDb, order.id),
       });
     } catch (error) {
       console.error("Error fetching order details:", error);
@@ -1498,7 +1530,7 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
       const { generateReceiptPdf } = await import("../services/pdfGenerator");
 
       const pdfBuffer = await generateReceiptPdf({
-        receiptNumber: `R-${String(order.id).slice(0, 8).toUpperCase()}`,
+        receiptNumber: receiptLabel(order.id, order.orderNumber),
         createdAt: (order.createdAt ?? new Date()).toISOString(),
         company: await loadCompanyInfo(ctx.orgId),
         items,
@@ -1518,7 +1550,7 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
       });
 
       res.setHeader("Content-Type", "application/pdf");
-      res.setHeader("Content-Disposition", `attachment; filename="receipt-${String(order.id).slice(0, 8)}.pdf"`);
+      res.setHeader("Content-Disposition", `attachment; filename="receipt-${receiptLabel(order.id, order.orderNumber)}.pdf"`);
       res.send(pdfBuffer);
     } catch (error) {
       console.error("Error generating receipt PDF:", error);
@@ -1576,6 +1608,96 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
     } catch (error) {
       console.error("Error revealing a customer's phone:", error);
       res.status(500).json({ message: "Could not show the number" });
+    }
+  });
+
+  /**
+   * Move an open order onto a different customer, or off Walk-in.
+   * Completed orders, credit already opened, points and split payments stay put.
+   */
+  app.patch("/api/orders/:id/customer", ...scoped, requireRole(...rolesAtLeast("MANAGER")), async (req: any, res) => {
+    try {
+      const ctx = req.orgContext as { orgId: string | null; userId?: string };
+      if (!ctx?.orgId) return res.status(400).json({ message: "Org context required" });
+      const body = z.object({ customerId: z.string().uuid().nullable() }).safeParse(req.body);
+      if (!body.success) return res.status(400).json({ message: "Choose a customer, or Walk-in." });
+      const { db } = await import("../db");
+      const { customers, loyaltyLedger, orderCredit, orderEvents, orderPayments, orders } = await import("@shared/schema");
+      const { and, eq, sql } = await import("drizzle-orm");
+      const [order] = await db
+        .select()
+        .from(orders)
+        .where(and(eq(orders.id, req.params.id), eq(orders.orgId, ctx.orgId)))
+        .limit(1);
+      if (!order) return res.status(404).json({ message: "Order not found" });
+      if (order.status === "completed") {
+        return res.status(409).json({ message: "This order is already finished. Change the customer before it is handed over." });
+      }
+      if (order.paymentMethod === "personal_use" || order.paymentMethod === "card_link") {
+        return res.status(409).json({ message: "This kind of order cannot change customer." });
+      }
+      if ((order.pointsRedeemed ?? 0) > 0) {
+        return res.status(409).json({ message: "Points were used on this order, so the customer stays as it is." });
+      }
+      const [credit] = await db.select({ status: orderCredit.status }).from(orderCredit).where(eq(orderCredit.orderId, order.id)).limit(1);
+      if (credit && credit.status !== "voided") {
+        return res.status(409).json({ message: "This order is already on the credit list." });
+      }
+      const [pays] = await db
+        .select({ n: sql<number>`count(*)::int` })
+        .from(orderPayments)
+        .where(eq(orderPayments.orderId, order.id));
+      if ((pays?.n ?? 0) > 1) {
+        return res.status(409).json({ message: "This order was paid in more than one part." });
+      }
+      const [points] = await db
+        .select({ n: sql<number>`count(*)::int` })
+        .from(loyaltyLedger)
+        .where(eq(loyaltyLedger.orderId, order.id));
+      if ((points?.n ?? 0) > 0) {
+        return res.status(409).json({ message: "Loyalty points are already on this order, so the customer stays as it is." });
+      }
+      let toName: string | null = null;
+      if (body.data.customerId) {
+        const [customer] = await db
+          .select({ name: customers.name })
+          .from(customers)
+          .where(and(eq(customers.id, body.data.customerId), eq(customers.orgId, ctx.orgId)))
+          .limit(1);
+        if (!customer) return res.status(404).json({ message: "Customer not found" });
+        toName = customer.name;
+      }
+      if (order.paymentMethod === "tick" && !body.data.customerId) {
+        return res.status(409).json({ message: "A credit order needs a customer." });
+      }
+      let fromName: string | null = null;
+      if (order.customerId) {
+        const [from] = await db
+          .select({ name: customers.name })
+          .from(customers)
+          .where(eq(customers.id, order.customerId))
+          .limit(1);
+        fromName = from?.name ?? null;
+      }
+      await db.transaction(async (tx) => {
+        await tx.update(orders).set({ customerId: body.data.customerId }).where(eq(orders.id, order.id));
+        await tx.insert(orderEvents).values({
+          orgId: ctx.orgId!,
+          orderId: order.id,
+          kind: "customer_reassigned",
+          userId: req.user?.id ?? null,
+          meta: {
+            fromCustomerId: order.customerId,
+            toCustomerId: body.data.customerId,
+            fromName,
+            toName,
+          },
+        });
+      });
+      res.json({ customerId: body.data.customerId, customerName: toName });
+    } catch (error) {
+      console.error("Error changing the order customer:", error);
+      res.status(500).json({ message: "Could not change the customer" });
     }
   });
 

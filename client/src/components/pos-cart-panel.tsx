@@ -33,6 +33,7 @@ export interface PosCartItem {
   subtotal: number;
   priceInput?: string;
   quantityInput?: string;
+  quantityInvalid?: boolean;
 }
 
 export interface PosCustomer {

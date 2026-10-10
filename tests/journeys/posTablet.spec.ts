@@ -1,18 +1,8 @@
 /**
- * The order form embedded in the Operations Centre's 42% pane (Phase N, N6;
- * docs/briefs/PHASE_N_OPERATIONS_CENTRE.md "Form embedding" and "UI" →
- * "Layout"). Rewritten from `tests/visual/pos-tablet.spec.ts` (a `visual`
- * project the CI job never ran, asserting `.pos-tablet-shell` /
- * `.pos-product-grid` classes no component had rendered since the tile-grid
- * POS was replaced — finding G26) against the real, current
- * `@container`-rooted form.
- *
- * The pane is well under the form's own 640 px narrow breakpoint at BOTH
- * viewports this asserts (a 1194 px tablet with the sidebar collapsed to its
- * icon rail leaves a ~1130 px main area, 42% of which is ~461 px; 1024 px
- * leaves ~960 px main, where 42% falls under the pane's own 400 px floor) —
- * so the form is expected to show its phone structure here, and the point of
- * this suite is that doing so never clips or scrolls the page sideways.
+ * The order form as a larger window over the Operations Centre board.
+ * The board stays on screen to the left of the window and keeps updating.
+ * The window must not clip the page sideways, and Create order must sit
+ * inside the window and the viewport.
  */
 import { expect } from "@playwright/test";
 import { ensureOpenShift, firstLocationId, okJson, pageAs, test, uniqueSuffix } from "./fixtures";
@@ -59,12 +49,12 @@ test.describe("POS embedded in the Operations Centre pane — 1194×834 (rail)",
 
     const search = pane.getByTestId("line-product-new");
     await expect(search).toBeVisible({ timeout: 30_000 });
-    await expect(pane.locator(".pos-cart-rail"), "the pane is narrow — no desktop cart rail").toHaveCount(0);
+    await expect(pane.locator(".pos-cart-rail"), "the old side rail is gone").toHaveCount(0);
 
     const paneBox = await pane.boundingBox();
     expect(paneBox, "the pane must be laid out").not.toBeNull();
-    expect(paneBox!.width).toBeLessThan(600);
-    expect(paneBox!.width).toBeGreaterThanOrEqual(390);
+    expect(paneBox!.x, "the board stays visible to the left of the order window").toBeGreaterThan(24);
+    expect(paneBox!.width).toBeGreaterThan(500);
 
     await search.fill(`OTW-${suffix}`);
     const option = page.getByRole("option", { name: new RegExp(product.name) });
@@ -133,14 +123,12 @@ test.describe("POS embedded in the Operations Centre pane — 1024×768", () => 
 
     const search = pane.getByTestId("line-product-new");
     await expect(search).toBeVisible({ timeout: 30_000 });
-    await expect(pane.locator(".pos-cart-rail"), "the pane is narrow — no desktop cart rail").toHaveCount(0);
+    await expect(pane.locator(".pos-cart-rail"), "the old side rail is gone").toHaveCount(0);
 
     const paneBox = await pane.boundingBox();
     expect(paneBox, "the pane must be laid out").not.toBeNull();
-    // 42% of a ~960 px main area falls under the pane's 400 px floor, so
-    // this viewport pins the pane to its minimum rather than the percentage.
-    expect(paneBox!.width).toBeGreaterThanOrEqual(390);
-    expect(paneBox!.width).toBeLessThan(500);
+    expect(paneBox!.x, "the board stays visible to the left of the order window").toBeGreaterThan(24);
+    expect(paneBox!.width).toBeGreaterThan(500);
 
     await search.fill(`OTW2-${suffix}`);
     const option = page.getByRole("option", { name: new RegExp(product.name) });

@@ -17,6 +17,7 @@ import { orders, orderItems, products, customers, orderEvents, orderPayments, lo
 import { isRole, roleRank } from "@shared/rbac";
 import { shiftIsoDate, tradingDayBounds } from "@shared/time/tradingDay";
 import { resolveUserNames } from "./userDisplayName";
+import { displayOrderNumber } from "@shared/orders/orderNumber";
 import { orgTimeZone } from "./tradingDayShift";
 import { mayFilterEvidenceBy, type EvidenceViewer } from "./evidenceStaff";
 
@@ -148,6 +149,7 @@ export async function getOrderAuditList(
     db
       .select({
         id: orders.id,
+        orderNumber: orders.orderNumber,
         createdAt: orders.createdAt,
         status: orders.status,
         channel: orders.channel,
@@ -221,7 +223,7 @@ export async function getOrderAuditList(
 
   const live: OrderAuditRow[] = rows.map((r) => ({
     id: r.id,
-    shortCode: r.id.slice(0, 8),
+    shortCode: displayOrderNumber(r.id, r.orderNumber),
     createdAt: (r.createdAt ?? new Date()).toISOString(),
     status: r.status ?? "pending",
     channel: r.channel,

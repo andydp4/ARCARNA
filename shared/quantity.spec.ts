@@ -7,6 +7,7 @@ import {
   parseNonNegativeQuantityInput,
   parseQuantityInput,
   positiveQuantity,
+  readQuantityDraft,
   roundQuantity,
 } from "./quantity";
 
@@ -53,6 +54,18 @@ describe("quantity: parsing what someone types", () => {
 
   it("rounds an over-precise entry rather than refusing it", () => {
     expect(parseQuantityInput("0.4004")).toBe(0.4);
+  });
+
+  it("keeps a large typed quantity, and names a bad one without dropping the line", () => {
+    expect(readQuantityDraft("100")).toEqual({ ok: true, quantity: 100 });
+    expect(readQuantityDraft("500")).toEqual({ ok: true, quantity: 500 });
+    expect(readQuantityDraft("1000")).toEqual({ ok: true, quantity: 1000 });
+    expect(readQuantityDraft("1000.5")).toEqual({ ok: true, quantity: 1000.5 });
+    expect(readQuantityDraft("")).toEqual({ ok: false, empty: true });
+    expect(readQuantityDraft("  ")).toEqual({ ok: false, empty: true });
+    expect(readQuantityDraft("abc")).toEqual({ ok: false, empty: false });
+    expect(readQuantityDraft("-1")).toEqual({ ok: false, empty: false });
+    expect(readQuantityDraft("0")).toEqual({ ok: false, empty: false });
   });
 
   it("accepts zero for non-negative fields without truncating fractions", () => {

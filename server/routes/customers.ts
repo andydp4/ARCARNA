@@ -13,6 +13,7 @@ import {
   REPLACE_PHONE_MIN_ROLE,
 } from "@shared/accessPolicy";
 import { duplicatePrompt, formatUkPhone, isMaskedValue, maskPhone } from "@shared/customerView";
+import { displayOrderNumber } from "@shared/orders/orderNumber";
 import {
   findCustomersByPhone,
   findPossibleDuplicates,
@@ -181,6 +182,51 @@ export function registerCustomerRoutes(app: Express, scoped: RequestHandler[]): 
     } catch (error) {
       console.error("Error fetching customer:", error);
       res.status(500).json({ message: "Failed to fetch customer" });
+    }
+  });
+
+  /** Every past order for one customer. Managers and above. Paginated so a long history is not one huge response. */
+  app.get("/api/customers/:id/orders", ...scoped, intelligenceRoles, async (req: any, res) => {
+    try {
+      const parsedId = z.string().uuid().safeParse(req.params.id);
+      if (!parsedId.success) return res.status(404).json({ message: "Customer not found" });
+      const ctx = req.orgContext as { orgId: string };
+      const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 20));
+      const offset = Math.max(0, Number(req.query.offset) || 0);
+      const { db } = await import("../db");
+      const { orders } = await import("@shared/schema");
+      const { and, desc, eq, sql } = await import("drizzle-orm");
+      const where = and(eq(orders.orgId, ctx.orgId), eq(orders.customerId, parsedId.data));
+      const [countRow] = await db.select({ n: sql<number>`count(*)::int` }).from(orders).where(where);
+      const found = await db
+        .select({
+          id: orders.id,
+          orderNumber: orders.orderNumber,
+          createdAt: orders.createdAt,
+          status: orders.status,
+          total: orders.total,
+        })
+        .from(orders)
+        .where(where)
+        .orderBy(desc(orders.createdAt))
+        .limit(limit + 1)
+        .offset(offset);
+      noStore(res);
+      const page = found.slice(0, limit);
+      res.json({
+        total: countRow?.n ?? 0,
+        orders: page.map((row) => ({
+          id: row.id,
+          reference: displayOrderNumber(row.id, row.orderNumber),
+          createdAt: row.createdAt,
+          status: row.status,
+          total: row.total,
+        })),
+        nextOffset: found.length > limit ? offset + limit : null,
+      });
+    } catch (error) {
+      console.error("Error listing customer orders:", error);
+      res.status(500).json({ message: "Failed to list orders" });
     }
   });
 
