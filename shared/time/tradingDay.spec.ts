@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   clockAfterMinutes,
   currentTradingDay,
+  dueInstantFromClock,
   isDueClockPast,
   lastClosedTradingDay,
   localInstant,
@@ -158,6 +159,21 @@ describe("localInstantAt — a minute-granular promise like a due time", () => {
     expect(() => localInstantAt("2026-01-12", "2:30 PM", LONDON)).toThrow(RangeError);
     expect(() => localInstantAt("2026-01-12", "24:00", LONDON)).toThrow(RangeError);
     expect(() => localInstantAt("2026-01-12", "09:60", LONDON)).toThrow(RangeError);
+  });
+});
+
+describe("a clock time on a live sale", () => {
+  it("uses today's calendar date before 06:00, not yesterday's trading day", () => {
+    // 02:05 London in July is 01:05 UTC. Fifteen minutes later is 02:20 London.
+    const now = new Date("2026-07-12T01:05:00Z");
+    const eta = dueInstantFromClock("2026-07-12", "02:20", LONDON, now, true);
+    expect(eta.toISOString()).toBe("2026-07-12T01:20:00.000Z");
+  });
+
+  it("rolls 00:20 after 23:50 onto the next day", () => {
+    const now = new Date("2026-01-12T23:50:00Z");
+    const eta = dueInstantFromClock("2026-01-12", "00:20", LONDON, now, true);
+    expect(eta.toISOString()).toBe("2026-01-13T00:20:00.000Z");
   });
 });
 

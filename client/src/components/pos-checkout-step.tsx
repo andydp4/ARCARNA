@@ -247,7 +247,7 @@ export function PosCheckoutStep(p: PosCheckoutStepProps) {
 
       <div className={p.continuous ? undefined : "min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6"}>
         <div className="mx-auto max-w-2xl space-y-5">
-          <CustomerCreditNotice customerId={p.customerId} disabled={p.submitting} />
+          {!p.continuous && <CustomerCreditNotice customerId={p.customerId} disabled={p.submitting} />}
           {p.priceGuardPanel}
           <section>
             <div className="mb-2 flex items-center justify-between">

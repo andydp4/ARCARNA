@@ -14,7 +14,7 @@ import { validateGiftCardCode } from "@shared/giftCards/code";
 import { roundMoney } from "@shared/giftCards/balance";
 import { redeemGiftCardInTx } from "../lib/giftCardService";
 import { resolveUserNames } from "../services/userDisplayName";
-import { currentTradingDay, localInstantAt } from "@shared/time/tradingDay";
+import { currentTradingDay, dueInstantFromClock, localCalendarDate } from "@shared/time/tradingDay";
 import { orgTimeZone } from "../services/tradingDayShift";
 import { publishOpsEvent } from "../services/opsBus";
 import { publishAlertRows, type OpsAlertCreatedRow } from "../services/opsAlerts";
@@ -169,11 +169,15 @@ export function resolveDuePromise(
   receivedAt: Date,
   tradingDate: string,
   timeZone: string,
+  rollIfPast = false,
 ): { ok: true; etaGiven: Date | null } | { ok: false; message: string; code: string } {
   const dueTime = typeof body.dueTime === "string" ? body.dueTime : undefined;
   if (dueTime) {
     try {
-      return { ok: true, etaGiven: localInstantAt(tradingDate, dueTime, timeZone) };
+      return {
+        ok: true,
+        etaGiven: dueInstantFromClock(tradingDate, dueTime, timeZone, receivedAt, rollIfPast),
+      };
     } catch {
       return {
         ok: false,
@@ -652,8 +656,8 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
       const receivedAt = req.offlineQueuedAt ?? new Date();
       const needsRealTimeZone = typeof body.dueTime === "string" && !isBackdated && !isPreorder;
       const timeZone = needsRealTimeZone ? await orgTimeZone(ctx.orgId) : dating.timeZone;
-      const tradingDate = isBackdated || isPreorder ? dating.dating.date : currentTradingDay(timeZone, receivedAt);
-      const duePromise = resolveDuePromise(body, receivedAt, tradingDate, timeZone);
+      const tradingDate = isBackdated || isPreorder ? dating.dating.date : localCalendarDate(receivedAt, timeZone);
+      const duePromise = resolveDuePromise(body, receivedAt, tradingDate, timeZone, !isBackdated && !isPreorder);
       if (!duePromise.ok) {
         return res.status(400).json({ message: duePromise.message, code: duePromise.code });
       }

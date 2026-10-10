@@ -189,16 +189,16 @@ export function OpsShell({
         </div>
       )}
       {isTwoPane ? (
-        <div className="relative min-h-0 flex-1">
-          {/* The board stays mounted and keeps refreshing under the order
-              window. The strip to the left of the window stays tappable. */}
-          <div className="absolute inset-0 flex flex-col gap-4 overflow-y-auto p-4 pb-40 @container">
+        <div className="flex min-h-0 flex-1 gap-3 p-3">
+          {/* The board stays mounted beside the order window and keeps
+              refreshing. It is not covered, so alerts stay readable. */}
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-y-auto pb-40 @container">
             {alertsSlot}
             {board}
           </div>
           <div
-            className="absolute inset-y-3 right-3 z-20 flex flex-col overflow-hidden rounded-xl border border-border bg-card shadow-2xl"
-            style={formCollapsed ? { width: "3.5rem" } : { width: "min(78%, 72rem)", minWidth: "400px" }}
+            className="flex min-h-0 shrink-0 flex-col overflow-hidden rounded-xl border border-border bg-card shadow-2xl"
+            style={formCollapsed ? { width: "3.5rem" } : { width: "min(72%, 72rem)" }}
             data-testid="ops-form-pane"
           >
             <div className="flex shrink-0 justify-end p-2">

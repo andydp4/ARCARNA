@@ -148,6 +148,27 @@ export function clockAfterMinutes(minutes: number, timeZone: string, now: Date =
   return `${String(hour).padStart(2, "0")}:${String(p.minute).padStart(2, "0")}`;
 }
 
+/**
+ * The instant a clock time means.
+ *
+ * On a live sale the clock is read against today's calendar date in the shop,
+ * not the trading day. Before 06:00 the trading day is still yesterday, and
+ * "in 15 minutes" must not land there. A clock that has already passed by more
+ * than a couple of minutes (23:50 plus 30 minutes is 00:20) is the next day.
+ * A dated order keeps the date it was given and is not rolled forward.
+ */
+export function dueInstantFromClock(
+  date: string,
+  hhmm: string,
+  timeZone: string,
+  receivedAt: Date,
+  rollIfPast: boolean,
+): Date {
+  const eta = localInstantAt(date, hhmm, timeZone);
+  if (!rollIfPast || eta.getTime() >= receivedAt.getTime() - 2 * 60_000) return eta;
+  return localInstantAt(shiftIsoDate(date, 1), hhmm, timeZone);
+}
+
 /** True when a chosen clock time on that calendar date is already in the past in the shop. */
 export function isDueClockPast(orderDate: string, hhmm: string, timeZone: string, now: Date = new Date()): boolean {
   if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(hhmm)) return false;

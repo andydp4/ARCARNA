@@ -31,7 +31,12 @@ test.describe("My run on a phone", () => {
       mine.push(await orderInState(api, db, "ready", { fulfilment: "delivery", assignedTo: DRIVER, dueIn }));
     }
     const theirs = await orderInState(api, db, "ready", { fulfilment: "delivery", assignedTo: cashierB.userId, dueIn: 20 });
-    const [a, b, c] = mine.map((o) => ({ id: o.id, code: o.id.slice(0, 8) }));
+    const shown = async (id: string) => {
+      const stored = await row(id);
+      return stored.orderNumber != null ? String(stored.orderNumber) : id.slice(0, 8);
+    };
+    const [a, b, c] = await Promise.all(mine.map(async (o) => ({ id: o.id, code: await shown(o.id) })));
+    const theirsCode = await shown(theirs.id);
 
     const page = await pageAs(browser, "CASHIER", orgId);
     const dialogs = page.locator('[role="dialog"]');
@@ -39,13 +44,13 @@ test.describe("My run on a phone", () => {
     const stop = (code: string) => page.getByTestId(`run-stop-${code}`);
 
     for (const s of [a, b, c]) await expect(stop(s.code)).toBeVisible({ timeout: 60_000 });
-    await expect(stop(theirs.id.slice(0, 8)), "someone else's delivery is not on my run").toHaveCount(0);
+    await expect(stop(theirsCode), "someone else's delivery is not on my run").toHaveCount(0);
     await expect(dialogs).toHaveCount(0);
 
     // Ours in due order: a before b before c.
     const codes = async () =>
       (await page.locator('[data-testid^="run-stop-"]').evaluateAll((els) => els.map((e) => e.getAttribute("data-testid"))))
-        .filter((t): t is string => !!t && /^run-stop-[0-9a-f]{8}$/.test(t))
+        .filter((t): t is string => !!t && /^run-stop-(\d{9}|[0-9a-f]{8})$/.test(t))
         .map((t) => t.replace("run-stop-", ""))
         .filter((code) => [a.code, b.code, c.code].includes(code));
     expect(await codes()).toEqual([a.code, b.code, c.code]);

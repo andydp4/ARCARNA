@@ -1865,6 +1865,11 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
               <div className="text-2xl font-bold tabular-nums text-metal-warm-white" data-testid="mobile-order-total">
                 <span data-testid="checkout-total">£{total.toFixed(2)}</span>
               </div>
+              {deliveryFee > 0 && (
+                <div className="truncate text-sm text-metal-muted" data-testid="checkout-delivery-fee">
+                  incl. {deliveryFeeName.toLowerCase()} £{deliveryFee.toFixed(2)}
+                </div>
+              )}
             </div>
             <Button
               type="button"
