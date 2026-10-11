@@ -58,6 +58,8 @@ export type ZReportShift = {
 
 export type ZReportData = {
   shift: ZReportShift;
+  /** Organisation-wide, as at generatedAt; never attributed to this drawer. */
+  unattachedCashRefunds?: UnattachedCashRefundSummary;
   /**
    * When these figures were taken.
    *
@@ -120,6 +122,18 @@ export type ZReportData = {
    * takings that are short of gross sales and is in no takings figure above.
    */
   awaitingCardPayment: number;
+};
+
+export type UnattachedCashRefundSummary = {
+  count: number;
+  cashTotal: number;
+};
+
+export type UnattachedCashRefundList = UnattachedCashRefundSummary & {
+  generatedAt: string;
+  offset: number;
+  /** 100 per page; count and cashTotal cover ALL unlinked cash refunds. */
+  refunds: Array<{ id: string; orderId: string; createdAt: string | null; cashAmount: number }>;
 };
 
 /** Credit given out during the shift, from the orders' credit records. */

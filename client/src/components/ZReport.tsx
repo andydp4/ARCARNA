@@ -116,6 +116,16 @@ export function ZReportView({ report }: { report: ZReportData }) {
 
           <div>
             <p className="font-medium mb-1">Cash drawer</p>
+            {(report.unattachedCashRefunds?.count ?? 0) > 0 && (
+              <p role="alert" className="mb-3 border-l-2 border-amber-500 pl-3" data-testid="z-unattached-refunds">
+                Reconciliation needs review: {report.unattachedCashRefunds!.count} cash refund(s), totalling{" "}
+                {money(report.unattachedCashRefunds!.cashTotal)}, have no till shift assigned across the organisation
+                as at {new Date(report.generatedAt).toLocaleString("en-GB")}.
+                These are not included in this drawer's expected cash or variance. A manager must check
+                where the cash was paid out before treating any shortage as a cashier discrepancy.
+                This is an organisation-wide exception total, not an amount to deduct from each till.
+              </p>
+            )}
             <div className="grid grid-cols-2 gap-2">
               <span>Opening float</span>
               <span className="text-right">{money(report.cashSummary.openingFloat)}</span>

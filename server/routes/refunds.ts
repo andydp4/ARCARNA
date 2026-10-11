@@ -18,7 +18,7 @@ import { isPaidLeg } from "@shared/payments/cardLink";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { requireRole } from "../auth";
 import { recordAdminAudit } from "../adminAudit";
-import { findOpenShiftForUser } from "../middleware/requireOpenShift";
+import { drawerForRefundInTx } from "../middleware/requireOpenShift";
 import { touchCashierShiftActivity } from "../services/cashierShiftEngine";
 import { publishEventTx } from "../eventBus";
 import { proportionalPointsToReverse } from "@shared/refunds/points";
@@ -417,8 +417,6 @@ export function registerRefundRoutes(app: Express, scoped: RequestHandler[]): vo
         }
         // Soft attach (ARC-015): this user's own already-open till shift, if
         // any — never one opened just now for this request.
-        const openShift = await findOpenShiftForUser(ctx.orgId, userId);
-        const shiftId = openShift?.id ?? null;
         const earnedPoints = await pointsEarnedOnOrder(order.id);
         // Reverse points proportionally against what was actually collected —
         // an inflated `orders.total` would otherwise under-reverse them.
@@ -429,6 +427,9 @@ export function registerRefundRoutes(app: Express, scoped: RequestHandler[]): vo
         );
 
         const result = await db.transaction(async (tx) => {
+          // Lock the drawer before the order, matching shift close: no refund
+          // can be stamped to a counted drawer after its expected cash is fixed.
+          const shiftId = await drawerForRefundInTx(tx, ctx.orgId, userId);
           // The ceiling check above runs outside this transaction and takes no
           // lock, so two simultaneous refunds both read zero prior refunds and
           // both pass it — a £30 order could be refunded £90. Lock the order

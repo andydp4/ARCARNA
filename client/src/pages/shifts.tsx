@@ -35,7 +35,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { ZReportView } from "@/components/ZReport";
-import type { ZReportData } from "@shared/reports/zReport";
+import type { ZReportData, UnattachedCashRefundList } from "@shared/reports/zReport";
 import { cn } from "@/lib/utils";
 import { MoreVertical, UserRound } from "lucide-react";
 
@@ -128,6 +128,7 @@ export default function ShiftsPage() {
 
   const [reportShiftId, setReportShiftId] = useState<string | null>(null);
   const [windowHours, setWindowHours] = useState<string>(DEFAULT_WINDOW);
+  const [refundOffset, setRefundOffset] = useState(0);
   const [closeTarget, setCloseTarget] = useState<ShiftRow | null>(null);
   const [closingCount, setClosingCount] = useState("");
   const [closeNotes, setCloseNotes] = useState("");
@@ -149,6 +150,17 @@ export default function ShiftsPage() {
 
   const invalidateShifts = () => queryClient.invalidateQueries({ queryKey: ["/api/shifts"] });
 
+  const { data: unattached, isError: unattachedError } = useQuery<UnattachedCashRefundList>({
+    queryKey: ["/api/shifts", "unattached-refunds", refundOffset],
+    enabled: ["SUPER_ADMIN", "ADMIN", "MANAGER"].includes(user?.role ?? ""),
+    queryFn: async () => {
+      const res = await apiFetch(`/api/shifts/unattached-refunds?offset=${refundOffset}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to check unassigned cash refunds");
+      return res.json();
+    },
+    refetchInterval: 60_000,
+  });
+
   const closeMutation = useMutation({
     mutationFn: async ({ id, closingCount, notes }: { id: string; closingCount: number; notes: string }) => {
       const res = await apiRequest("POST", `/api/shifts/${id}/close`, {
@@ -157,8 +169,14 @@ export default function ShiftsPage() {
       });
       return res.json();
     },
-    onSuccess: () => {
-      toast({ title: "Shift closed" });
+    onSuccess: (result: { report?: ZReportData }) => {
+      const unassigned = result.report?.unattachedCashRefunds;
+      toast({
+        title: unassigned?.count ? "Shift closed — reconciliation needs review" : "Shift closed",
+        description: unassigned?.count
+          ? `${unassigned.count} unassigned cash refund(s) across the organisation (£${unassigned.cashTotal.toFixed(2)}). Check the source of the cash before relying on till variances.`
+          : undefined,
+      });
       setCloseTarget(null);
       setClosingCount("");
       setCloseNotes("");
@@ -234,6 +252,45 @@ export default function ShiftsPage() {
           </Select>
         }
       />
+
+      {unattachedError && (
+        <p role="alert" className="text-sm text-destructive">
+          Could not check unassigned cash refunds. Reconciliation exceptions have not been verified.
+        </p>
+      )}
+      {(unattached?.count ?? 0) > 0 && (
+        <Card data-testid="unattached-cash-refunds" className="border-amber-500">
+          <CardHeader><CardTitle className="text-base">Cash refunds needing reconciliation</CardTitle></CardHeader>
+          <CardContent className="space-y-3 text-sm">
+            <p role="alert">
+              {unattached!.count} unassigned cash refund(s), totalling £{unattached!.cashTotal.toFixed(2)}, across the
+              organisation. These have no recorded source till and are excluded from individual till balances.
+              Check where the cash was paid out before treating a variance as a cashier discrepancy.
+            </p>
+            <p className="text-muted-foreground">
+              All dates and locations, including refunds issued with no till open. Showing {unattached!.offset + 1}–{unattached!.offset + unattached!.refunds.length};
+              the total includes every unassigned cash refund. This total must not be deducted from each till.
+            </p>
+            <details>
+              <summary className="cursor-pointer">Review refund references</summary>
+              <ul className="mt-2 space-y-2">
+                {unattached!.refunds.map((refund) => (
+                  <li key={refund.id}>
+                    {refund.createdAt ? new Date(refund.createdAt).toLocaleString("en-GB") : "Date unavailable"}
+                    {" · "}£{refund.cashAmount.toFixed(2)} — Refund {refund.id}; order {refund.orderId}
+                  </li>
+                ))}
+              </ul>
+            </details>
+            {unattached!.count > 100 && (
+              <div className="flex gap-2">
+                <Button type="button" variant="outline" disabled={refundOffset === 0} onClick={() => setRefundOffset(Math.max(0, refundOffset - 100))}>Previous refunds</Button>
+                <Button type="button" variant="outline" disabled={refundOffset + 100 >= unattached!.count} onClick={() => setRefundOffset(refundOffset + 100)}>Next refunds</Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* On now is the first thing asked and was the one thing the page never
           said. Open shifts are listed here whatever the window, because someone
