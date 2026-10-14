@@ -54,10 +54,9 @@ describe("What's New 1.2.0", () => {
 describe("What's New 1.2.1", () => {
   const titles121 = (role: string) => whatsNewForRole("1.2.1", role).map((i) => i.title);
 
-  it("is the version the app ships, and has notes for it", () => {
-    expect(APP_VERSION).toBe("1.2.1");
-    expect(LATEST_WHATS_NEW_VERSION).toBe(APP_VERSION);
-    expect(WHATS_NEW[APP_VERSION]?.length).toBeGreaterThan(0);
+  it("is not the version the app ships any more, but keeps its notes", () => {
+    expect(APP_VERSION).not.toBe("1.2.1");
+    expect(WHATS_NEW["1.2.1"]?.length).toBeGreaterThan(0);
   });
 
   it("gives every staff role something, and a shop account nothing", () => {
@@ -88,5 +87,45 @@ describe("What's New 1.2.1", () => {
 
   it("still keeps the 1.2.0 notes", () => {
     expect(WHATS_NEW["1.2.0"]?.length).toBeGreaterThan(0);
+  });
+});
+
+describe("What's New 1.3.0", () => {
+  const titles130 = (role: string) => whatsNewForRole("1.3.0", role).map((i) => i.title);
+
+  it("is the version the app ships, and has notes for it", () => {
+    expect(APP_VERSION).toBe("1.3.0");
+    expect(LATEST_WHATS_NEW_VERSION).toBe(APP_VERSION);
+    expect(WHATS_NEW[APP_VERSION]?.length).toBeGreaterThan(0);
+  });
+
+  it("gives every staff role something, and a shop account nothing", () => {
+    for (const role of ROLES) expect(whatsNewForRole("1.3.0", role).length, role).toBeGreaterThan(0);
+    expect(whatsNewForRole("1.3.0", "CUSTOMER")).toEqual([]);
+  });
+
+  it("keeps each note short", () => {
+    for (const item of WHATS_NEW["1.3.0"]) {
+      expect(item.roles.length).toBeGreaterThan(0);
+      expect(item.title.length).toBeLessThanOrEqual(80);
+      expect(item.detail.length).toBeLessThanOrEqual(320);
+    }
+  });
+
+  it("leads every role with the new order form", () => {
+    for (const role of ROLES) {
+      expect(titles130(role)[0], role).toBe("A new order form: everything on one screen");
+      expect(titles130(role), role).toContain("Type any quantity, then press Create order");
+    }
+  });
+
+  it("keeps past orders, Change customer and profit to managers and above", () => {
+    expect(titles130("CASHIER")).not.toContain("Past orders and Change customer");
+    expect(titles130("CASHIER")).not.toContain("Actual profit, and top products by revenue or profit");
+    expect(titles130("MANAGER")).toContain("Past orders and Change customer");
+  });
+
+  it("still keeps the 1.2.1 notes", () => {
+    expect(WHATS_NEW["1.2.1"]?.length).toBeGreaterThan(0);
   });
 });

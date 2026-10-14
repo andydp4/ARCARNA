@@ -261,6 +261,65 @@ export const WHATS_NEW: Record<string, WhatsNewItem[]> = {
         "Refunds, closed-day sales and reports were checked line by line against the shop's own figures and several were fixed. A security sweep closed holes between businesses sharing arcarna. Every Centre page was checked on desktop and phone for dead links, overlaps and small buttons, and fixed. Nothing here needs any setup.",
     },
   ],
+  // v1.3: the order form is the big change. Full list: docs/briefs/ARCARNA_1_3.md.
+  "1.3.0": [
+    {
+      roles: ["CASHIER", "MANAGER", "ADMIN", "SUPER_ADMIN"],
+      area: "Operations Centre › New order",
+      title: "A new order form: everything on one screen",
+      detail:
+        "New order opens as a larger window over the board. Products are on the left; customer, fulfilment and payment on the right; the total and Create order at the bottom. There is no Continue to payment step any more. Back to board tucks it away. On a phone the Board and New order tabs work as before.",
+    },
+    {
+      roles: ["CASHIER", "MANAGER", "ADMIN", "SUPER_ADMIN"],
+      area: "Order form",
+      title: "Type any quantity, then press Create order",
+      detail:
+        "Type a quantity straight in, even 100 or 1000; minus and plus step from it. A bad quantity is marked and stops the order until it is fixed. The pay button now says Create order for every payment type (Log personal use stays). One line under the payment choices says what that choice does.",
+    },
+    {
+      roles: ["CASHIER", "MANAGER", "ADMIN", "SUPER_ADMIN"],
+      area: "Order form / Drafts",
+      title: "Unfinished orders save themselves",
+      detail:
+        "An order you are building is saved as you go; the header shows Saving, Saved or Could not save. Drafts on the board opens it again, and Discard removes it. A draft takes no payment, moves no stock and issues no invoice.",
+    },
+    {
+      roles: ["CASHIER", "MANAGER", "ADMIN", "SUPER_ADMIN"],
+      area: "Order form",
+      title: "Easier order date and due time",
+      detail:
+        "Open the date or due time from the field or the icon. A +minutes choice is saved as a clock time, a future day asks for a time, and a time that has already passed is named.",
+    },
+    {
+      roles: ["CASHIER", "MANAGER", "ADMIN", "SUPER_ADMIN"],
+      area: "Orders / Invoices",
+      title: "New order and invoice numbers",
+      detail:
+        "New orders are numbered from 440400001 and new invoices from INV-440000001. Numbers already given out stay as they are. An order with no invoice yet says Not issued.",
+    },
+    {
+      roles: ["MANAGER", "ADMIN", "SUPER_ADMIN"],
+      area: "Order form",
+      title: "Past orders and Change customer",
+      detail:
+        "Pick a customer and View all past orders lists their orders; Back to the order returns to the sale you were building. Change customer fixes the name on an open order. Finished orders, opened credit and orders that used points stay as they are.",
+    },
+    {
+      roles: ["MANAGER", "ADMIN", "SUPER_ADMIN"],
+      area: "Truths Centre",
+      title: "Actual profit, and top products by revenue or profit",
+      detail:
+        "Actual profit is takings minus stock cost, order expenses and overheads; Weekly Margin is now Margin on goods. Top products can rank by revenue (the default), gross profit or quantity, so a low-volume, high-value product can show.",
+    },
+    {
+      roles: ["MANAGER", "ADMIN", "SUPER_ADMIN"],
+      area: "Shifts / Stock",
+      title: "Two fixes: cash refunds and edited orders",
+      detail:
+        "A cash refund made with no till open now shows on a list in Shifts, and Z-reports warn about it, instead of quietly missing from cash-up. Editing an order more than once no longer leaves stock too high.",
+    },
+  ],
 }
 
 export function whatsNewForRole(version: string, role: string): WhatsNewItem[] {

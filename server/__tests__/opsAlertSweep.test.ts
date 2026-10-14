@@ -226,7 +226,12 @@ describe("sweepOpsAlerts — time-based generation", () => {
   it("the SAME order DOES get a late alert once the org opts into SLA-derived dues", async () => {
     const localOrgId = await makeOrg({ opsAlertOnSlaDue: true, opsPrepSlaMinutes: 20, opsLateGraceMinutes: 5 });
     extraOrgIds.push(localOrgId);
-    const now = new Date();
+    // Mid-morning London, not the wall clock: the order below is received an
+    // hour before `now`, and between 06:00 and 07:00 London that hour falls on
+    // the previous trading day, so the sweep (rightly) treats it as carried
+    // over and the test failed every morning in that window.
+    const today = new Date();
+    const now = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate(), 11, 30));
     const orderId = await makeOrder(localOrgId, {
       fulfilmentMethod: "collection",
       assignedUserId: "sam",
