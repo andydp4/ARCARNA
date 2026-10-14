@@ -175,9 +175,9 @@ export function buildInsightsPdf(data: any, type: string, period?: string): Prom
     if (data?.orders?.total != null) kpis.push({ label: "Total Orders", value: String(data.orders.total) });
     if (data?.orders?.average != null) kpis.push({ label: "Avg Order", value: money(data.orders.average) });
     tables.push({
-      heading: "Top Products",
-      columns: ["Product", "Quantity", "Revenue"],
-      rows: (data?.orders?.topProducts ?? []).map((p: any) => [p.name, p.quantity, money(p.revenue)]),
+      heading: "Top Products by Revenue",
+      columns: ["Product", "Quantity", "Revenue", "Gross Profit"],
+      rows: (data?.orders?.topProducts ?? []).map((p: any) => [p.name, p.quantity, money(p.revenue), p.grossProfit == null ? "Cost missing" : money(p.grossProfit)]),
     });
   }
   if (type === "customers" || type === "full") {

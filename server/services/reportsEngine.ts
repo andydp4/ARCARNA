@@ -11,6 +11,8 @@
  * operational order fields (Order Status, Delay Log) and net-new tables
  * (Satisfaction, Reseller, Staff KPI) are added alongside their schema.
  */
+import { productPerformance } from "./productPerformance";
+import { rankProducts } from "@shared/analytics/productPerformance";
 import { deliveryFeeTakingsBetween } from "./deliveryFeeTakings";
 import { PAYMENT_STATUS_PAID, isCardLinkMethod } from "@shared/payments/cardLink";
 import { db } from "../db";
@@ -434,29 +436,13 @@ export async function weeklySalesSummary(
   const topScopeConds = [];
   if (filter?.locationId) topScopeConds.push(eq(orders.locationId, filter.locationId));
   if (filter?.staffUserId) topScopeConds.push(eq(orders.completedUserId, filter.staffUserId));
-  const top = await db
-    .select({
-      name: products.name,
-      units: sql<number>`SUM(${orderItems.quantity})`,
-      revenue: sql<number>`SUM(CAST(${orderItems.totalPrice} AS DECIMAL))`,
-    })
-    .from(orderItems)
-    .innerJoin(products, eq(orderItems.productId, products.id))
-    .innerJoin(orders, eq(orderItems.orderId, orders.id))
-    .where(
-      and(
-        eq(orders.orgId, orgId),
-        eq(orders.status, "completed"),
-        gte(orders.settledAt, start),
-        lt(orders.settledAt, end),
-        // Personal use is not a sale: its goods are not top sellers.
-        sql`LOWER(COALESCE(${orders.paymentMethod}, '')) <> 'personal_use'`,
-        ...topScopeConds,
-      ),
-    )
-    .groupBy(products.name)
-    .orderBy(sql`SUM(${orderItems.quantity}) DESC`)
-    .limit(5);
+  const top = await productPerformance(and(
+    eq(orders.orgId, orgId),
+    eq(orders.status, "completed"),
+    gte(orders.settledAt, start),
+    lt(orders.settledAt, end),
+    ...topScopeConds,
+  ));
 
   // Prior week (same trading-day span, 7 days earlier) for WoW delta.
   const pwFrom = shiftIsoDate(fromIso, -7);
@@ -503,11 +489,11 @@ export async function weeklySalesSummary(
       vsPrevWeek,
       peakTradingDay: peakDay,
     },
-    rows: top.map((t, i) => ({
+    rows: rankProducts(top, "revenue", top.length).map((t, i) => ({
+      ...t,
       rank: i + 1,
       product: t.name,
-      units: num(t.units),
-      revenue: num(t.revenue),
+      units: t.quantity,
     })),
     redFlags,
   };
