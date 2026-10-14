@@ -55,7 +55,7 @@ set -a && source .env && set +a
 npm run db:push
 bash scripts/apply-migrations-pm2.sh   # applies migrations/*.sql (CI parity)
 npm run seed
-npx tsx scripts/backfill-product-location-stock.ts
+./node_modules/.bin/tsx scripts/backfill-product-location-stock.ts   # see "Node toolchain" note: avoid npx
 ```
 
 **POS / location stock gotcha:** `products.stock` is a legacy display field (often `0` after backfill). Authoritative stock is `product_location_stock`. After backfill, sync display stock for the seeded location so the POS UI shows items as in stock:
@@ -93,6 +93,23 @@ psql "$DATABASE_URL" -c "UPDATE organizations SET onboarding_state = '{\"complet
 | Storage audit (CI) | `node scripts/audit-storage-orgid.mjs` |
 
 Prefer **tmux** for long-running `npm run dev` (e.g. session `midnight-dev`).
+
+### Node toolchain gotcha (`npx` / `npm test`)
+
+Some Cloud Agent VM images ship a **broken bundled `npx`** at `/exec-daemon` (its `npm exec` fails with `Class extends value undefined ...` due to a `minipass` version mismatch in the base image's npm). This breaks:
+
+- `npx <bin> ...` invocations (use the local binary instead, e.g. `./node_modules/.bin/tsx`, `./node_modules/.bin/drizzle-kit`).
+- `npm test` — `server/__tests__/integrityMigration.test.ts` shells out to `npx drizzle-kit push`, so **7 tests fail with the broken `npx`** even though the rest of the suite passes.
+
+A working Node 22 toolchain is usually co-installed via **nvm**. Run tests with it on `PATH` so `npx` resolves to the working one (all 270 files / 2991 tests pass):
+
+```bash
+set -a && source .env && set +a
+export PATH="$(dirname "$(nvm which current 2>/dev/null || echo "$NVM_DIR/versions/node/$(ls "$NVM_DIR/versions/node" | tail -1)/bin/node")")":$PATH
+npm test
+```
+
+`npm ci`, `npm run build`, `npm run dev`, and `npm run check` do **not** use `npx` and work with either toolchain.
 
 ### Dev auth
 
