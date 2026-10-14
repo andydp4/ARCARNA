@@ -12,6 +12,7 @@
 import { and, eq, inArray, isNotNull, notInArray, or, sql } from "drizzle-orm";
 import { deliveryRunOrders, orderPayments, organizations } from "@shared/schema";
 import { currentTradingDay } from "@shared/time/tradingDay";
+import { displayOrderNumber } from "@shared/orders/orderNumber";
 import { roleRank, type Role } from "@shared/rbac";
 import {
   deliveryIssueNote,
@@ -129,6 +130,7 @@ export async function loadRun(
   const rows = await db
     .select({
       id: orders.id,
+      orderNumber: orders.order_number,
       customerId: orders.customer_id,
       customerName: customers.name,
       total: orders.total,
@@ -174,7 +176,7 @@ export async function loadRun(
     const due = promised ?? (received ? new Date(new Date(received).getTime() + deliveryLeadMinutes * 60_000) : null);
     return {
       id: r.id,
-      shortCode: String(r.id).slice(0, 8),
+      shortCode: displayOrderNumber(String(r.id), r.orderNumber),
       customerName: r.customerName?.trim() ? r.customerName.trim() : null,
       hasCustomer: Boolean(r.customerId),
       deliveryAddress: r.deliveryAddress ?? null,

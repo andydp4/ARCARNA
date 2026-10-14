@@ -232,8 +232,10 @@ export function ExpenseReportsPage() {
         <TabsContent value="profit" className="space-y-6">
           <Card className="border-primary/20 bg-muted/30">
             <CardHeader className="pb-2">
-              <CardTitle className="text-base">Bottom line</CardTitle>
-              <CardDescription>Net profit after revenue, COGS, and all expenses in this period</CardDescription>
+              <CardTitle className="text-base">Actual profit</CardTitle>
+              <CardDescription>
+                Takings, minus stock cost, minus order expenses, minus overheads. VAT is included. Staff commission is not taken off.
+              </CardDescription>
             </CardHeader>
             <CardContent className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
               <div
@@ -248,6 +250,24 @@ export function ExpenseReportsPage() {
                 Net margin {formatPercent(profitAnalysis?.summary?.netMargin || 0)}
               </p>
             </CardContent>
+            <CardContent className="grid grid-cols-2 gap-2 border-t pt-3 text-sm sm:grid-cols-4">
+              <div>
+                <p className="text-xs text-muted-foreground">Takings</p>
+                <p className="tabular-nums">{formatCurrency(profitAnalysis?.summary?.revenue || 0)}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Stock cost</p>
+                <p className="tabular-nums">{formatCurrency(profitAnalysis?.summary?.cogs || 0)}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Order expenses</p>
+                <p className="tabular-nums">{formatCurrency(profitAnalysis?.expenses?.orderExpenses || 0)}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Overheads</p>
+                <p className="tabular-nums">{formatCurrency(profitAnalysis?.expenses?.overhead || 0)}</p>
+              </div>
+            </CardContent>
           </Card>
 
           {/* Key Metrics */}
@@ -257,8 +277,7 @@ export function ExpenseReportsPage() {
             </h2>
             <p className="mb-3 text-xs text-muted-foreground">
               Revenue is settled orders only, net of refunds,{" "}
-              {profitAnalysis?.summary?.vatTreatment || "incl. VAT"}. Cost of goods is priced at each product's
-              current cost, not a snapshot from the moment it sold — arcarna does not yet record that.
+              {profitAnalysis?.summary?.vatTreatment || "incl. VAT"}. Stock cost is the cost recorded on each line when it was sold.
               {Number(profitAnalysis?.summary?.productsMissingCost) > 0 && (
                 <>
                   {" "}
@@ -345,7 +364,7 @@ export function ExpenseReportsPage() {
                   <Legend wrapperStyle={isNarrowChart ? { fontSize: 11 } : undefined} />
                   <Line type="monotone" dataKey="revenue" stroke={CHART_PRIMARY} name="Revenue" strokeWidth={2} />
                   <Line type="monotone" dataKey="grossProfit" stroke={CHART_POSITIVE} name="Gross Profit" strokeWidth={2} />
-                  <Line type="monotone" dataKey="netProfit" stroke={CHART_SERIES[5]} name="Net Profit" strokeWidth={2} />
+                  <Line type="monotone" dataKey="netProfit" stroke={CHART_SERIES[5]} name="Actual profit" strokeWidth={2} />
                 </LineChart>
               </ResponsiveContainer>
               </div>
@@ -625,7 +644,7 @@ export function ExpenseReportsPage() {
           <Card>
             <CardHeader>
               <CardTitle>Cost structure</CardTitle>
-              <CardDescription>Walk from revenue to net profit for the active period</CardDescription>
+              <CardDescription>Walk from takings to actual profit for these dates</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
@@ -659,7 +678,7 @@ export function ExpenseReportsPage() {
                 </div>
                 <Separator />
                 <div className="flex items-center justify-between rounded-md bg-muted/50 px-3 py-2">
-                  <span className="text-sm font-bold">Net profit</span>
+                  <span className="text-sm font-bold">Actual profit</span>
                   <span
                     className={`text-sm font-bold tabular-nums ${
                       profitAnalysis?.summary?.netProfit >= 0 ? "text-emerald-600" : "text-red-600"

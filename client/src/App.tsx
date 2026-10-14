@@ -64,6 +64,7 @@ const ProblemInbox = lazy(() => import("@/pages/problem-inbox"));
 const FrictionTruths = lazy(() => import("@/pages/friction-truths"));
 const Invoices = lazy(() => import("@/pages/invoices"));
 const OperationsCentre = lazy(() => import("@/pages/operations"));
+const OrderDetailPage = lazy(() => import("@/pages/order-detail"));
 const OrderRefundPage = lazy(() => import("@/pages/orders/refund"));
 const ShiftsPage = lazy(() => import("@/pages/shifts"));
 const RotaPage = lazy(() => import("@/pages/rota"));
@@ -204,6 +205,9 @@ function Router() {
           {/* My run (v1.2): the driver's phone view, open to all staff. */}
           <Route path="/my-run" component={MyRunPage} />
           <Route path="/open-orders"><Redirect to="/operations" /></Route>
+          <Route path="/orders/:id">
+            <RequireRole href="/customers"><OrderDetailPage /></RequireRole>
+          </Route>
           <Route path="/orders"><Redirect to="/operations" /></Route>
           <Route path="/create-order"><Redirect to="/operations?pane=order" /></Route>
           <Route path="/pos"><Redirect to="/operations?pane=order" /></Route>

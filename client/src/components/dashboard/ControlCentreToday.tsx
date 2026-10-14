@@ -1,7 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
 import { ArrowDown, ArrowUp, Minus } from "lucide-react";
 import { absoluteDelta, pctDelta, type DayKpi } from "@shared/analytics/kpi";
+import { isAtLeast } from "@shared/accessPolicy";
 import { CONTROL_CENTRE_QUERY_KEY, money, type ControlCentreSnapshot } from "@/lib/controlCentre";
+import { getJson } from "@/lib/queryClient";
+import { useAuth } from "@/hooks/useAuth";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ErrorState } from "@/components/ErrorState";
 
@@ -112,6 +115,29 @@ function TrendSparkline({ points }: { points: { date: string; revenue: number }[
   );
 }
 
+/** Same sum as Profit Truths. Admins only — it is built from stock cost. */
+function TodayActualProfit({ tradingDay }: { tradingDay: string }) {
+  const { user } = useAuth();
+  const allowed = isAtLeast(user?.role, "ADMIN");
+  const stamp = `${tradingDay}T12:00:00.000Z`;
+  const { data } = useQuery<{ summary?: { netProfit?: number } }>({
+    queryKey: ["/api/profit-analysis", "trading-day", tradingDay],
+    enabled: allowed && Boolean(tradingDay),
+    queryFn: () => getJson(`/api/profit-analysis?startDate=${stamp}&endDate=${stamp}`),
+    staleTime: 60_000,
+  });
+  if (!allowed || data?.summary?.netProfit == null) return null;
+  return (
+    <div className="mt-4 border-t border-[hsl(210,15%,78%/0.10)] pt-3" data-testid="control-centre-actual-profit">
+      <p className="text-xs uppercase tracking-wide text-metal-muted">Actual profit</p>
+      <p className="text-2xl font-bold text-metal-warm-white tabular-nums">{money(Number(data.summary.netProfit))}</p>
+      <p className="mt-1 text-xs text-metal-muted">
+        Takings, minus stock cost, minus order expenses, minus overheads.
+      </p>
+    </div>
+  );
+}
+
 export function ControlCentreToday() {
   const { data, isLoading, isFetching, isError, refetch } = useQuery<ControlCentreSnapshot>({
     queryKey: CONTROL_CENTRE_QUERY_KEY,
@@ -166,6 +192,7 @@ export function ControlCentreToday() {
           <div className="mt-4">
             <TrendSparkline points={data.revenueTrend} />
           </div>
+          <TodayActualProfit tradingDay={data.tradingDay} />
         </div>
         <ComparisonColumn title="vs last week" today={data.today} baseline={data.vsLastWeek} />
         {/* vsSameWeekdayAvg needs 4+ matching weekdays of settled-revenue

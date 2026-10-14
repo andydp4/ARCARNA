@@ -94,7 +94,7 @@ export default function WeeklyMarginReport() {
         ),
         kpis: (s) => [
           { label: "Products Sold", value: int(s.products), keyInfo: true },
-          { label: "Total Margin", value: money(s.totalMargin), keyInfo: true },
+          { label: "Margin on goods", value: money(s.totalMargin), keyInfo: true },
           { label: "Avg Margin", value: pct(s.avgMarginPct), keyInfo: true },
         ],
         columns: [
@@ -109,7 +109,7 @@ export default function WeeklyMarginReport() {
           { header: "Avg Sell", cell: (r) => money(r.avgSellPrice), keyInfo: true, align: "right" },
           { header: "Margin/Unit", cell: (r) => (r.grossMargin == null ? "—" : money(r.grossMargin)), keyInfo: true, align: "right" },
           { header: "Margin %", cell: (r) => (r.marginPct == null ? "—" : pct(r.marginPct)), keyInfo: true, align: "right" },
-          { header: "Total Margin", cell: (r) => money(r.totalMargin), keyInfo: true, align: "right" },
+          { header: "Margin on goods", cell: (r) => money(r.totalMargin), keyInfo: true, align: "right" },
           {
             header: "Flag",
             cell: (r) => <FlagBadge level={policyFlag(r)}>{flagText(r)}</FlagBadge>,

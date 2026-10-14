@@ -31,6 +31,7 @@ import { OpsShiftControls } from "@/components/operations/OpsShiftControls";
 import { OpsTour, OpsTourButton } from "@/components/operations/OpsTour";
 import type { OpsFilter } from "@/components/operations/OpsHeader";
 import POS from "@/pages/pos";
+import { OrderDraftsButton } from "@/components/operations/OrderDraftsButton";
 import { setUsagePane } from "@/lib/usage";
 
 /**
@@ -63,9 +64,6 @@ import { setUsagePane } from "@/lib/usage";
 
 /** Below this main-area width the form and the board become tabs rather than panes. */
 const TWO_PANE_MIN_WIDTH = 900;
-
-/** The order form's share of a two-pane layout, per the owner's mock. */
-const FORM_PANE_PERCENT = 42;
 
 type OpsTab = "board" | "order";
 
@@ -140,6 +138,8 @@ export interface OpsShellProps {
    * the board is already on screen.
    */
   boardArrivalCount?: number;
+  /** Bump to open the order window again after it was tucked away. */
+  expandFormToken?: number;
 }
 
 /**
@@ -157,8 +157,12 @@ export function OpsShell({
   alertsSlot,
   headerExtras,
   boardArrivalCount = 0,
+  expandFormToken = 0,
 }: OpsShellProps) {
   const [formCollapsed, setFormCollapsed] = useState(false);
+  useEffect(() => {
+    if (expandFormToken > 0) setFormCollapsed(false);
+  }, [expandFormToken]);
 
   // Usage record (v1.2 Phase 8B): the board alone is an always-on
   // information screen, scored per open hour; with the order form in front
@@ -185,34 +189,35 @@ export function OpsShell({
         </div>
       )}
       {isTwoPane ? (
-        <div className="flex min-h-0 flex-1 gap-4 p-4">
-          {/* pb-40 in each scroller: room to scroll the last card clear of the
-              floating Voice and WhatsApp launchers (UI-01). */}
-          <div className="flex min-w-0 flex-1 flex-col gap-4 overflow-y-auto pb-40 @container">
+        <div className="flex min-h-0 flex-1 gap-3 p-3">
+          {/* The board stays mounted beside the order window and keeps
+              refreshing. It is not covered, so alerts stay readable. */}
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-y-auto pb-40 @container">
             {alertsSlot}
             {board}
           </div>
           <div
-            className="flex shrink-0 flex-col gap-2 overflow-y-auto rounded-xl border border-border bg-card p-2"
-            style={formCollapsed ? { width: "3.5rem" } : { width: `${FORM_PANE_PERCENT}%`, minWidth: "400px" }}
+            className="flex min-h-0 shrink-0 flex-col overflow-hidden rounded-xl border border-border bg-card shadow-2xl"
+            style={formCollapsed ? { width: "3.5rem" } : { width: "min(72%, 72rem)" }}
             data-testid="ops-form-pane"
           >
-            <Button
-              size="touch"
-              variant="outline"
-              className="self-end"
-              onClick={() => setFormCollapsed((current) => !current)}
-              aria-expanded={!formCollapsed}
-              aria-label={formCollapsed ? "Show the new order pane" : "Hide the new order pane"}
-              data-testid="ops-form-collapse"
-            >
-              {formCollapsed ? (
-                <ChevronLeft className="h-4 w-4" aria-hidden />
-              ) : (
-                <ChevronRight className="h-4 w-4" aria-hidden />
-              )}
-            </Button>
-            {!formCollapsed && <div className="min-h-0 flex-1">{formSlot}</div>}
+            <div className="flex shrink-0 justify-end p-2">
+              <Button
+                size="touch"
+                variant="outline"
+                onClick={() => setFormCollapsed((current) => !current)}
+                aria-expanded={!formCollapsed}
+                aria-label={formCollapsed ? "Show the new order pane" : "Back to the board"}
+                data-testid="ops-form-collapse"
+              >
+                {formCollapsed ? (
+                  <ChevronLeft className="h-4 w-4" aria-hidden />
+                ) : (
+                  "Back to board"
+                )}
+              </Button>
+            </div>
+            {!formCollapsed && <div className="min-h-0 flex-1 overflow-hidden">{formSlot}</div>}
           </div>
         </div>
       ) : (
@@ -467,7 +472,16 @@ export default function OperationsCentre() {
   // Stable across the ticker's once-a-second re-render, so POS (which is not
   // memoized) never sees a "new" embedded prop object when nothing about it
   // actually changed.
-  const embeddedPosProps = useMemo(() => ({ onPlaced: handleOrderPlaced }), [handleOrderPlaced]);
+  const [resumeDraftId, setResumeDraftId] = useState<string | null>(null);
+  const [expandFormToken, setExpandFormToken] = useState(0);
+  const embeddedPosProps = useMemo(
+    () => ({
+      onPlaced: handleOrderPlaced,
+      resumeDraftId,
+      onResumeHandled: () => setResumeDraftId(null),
+    }),
+    [handleOrderPlaced, resumeDraftId],
+  );
 
   const blockedReason = board.staleness.isStale ? board.staleness.reason : null;
 
@@ -783,8 +797,16 @@ export default function OperationsCentre() {
         tab={tab}
         onTabChange={onTabChange}
         formSlot={<POS embedded={embeddedPosProps} />}
+        expandFormToken={expandFormToken}
         headerExtras={
           <>
+            <OrderDraftsButton
+              onResume={(id) => {
+                setResumeDraftId(id);
+                setExpandFormToken((current) => current + 1);
+                onTabChange("order");
+              }}
+            />
             <OpsTourButton />
             <OpsShiftControls />
           </>
