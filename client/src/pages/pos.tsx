@@ -1,10 +1,10 @@
 /**
  * The order form.
  *
- * Two steps, no pop-ups. Step 1 builds the order on the line editor: type a
- * code or name, scan a barcode, or tap a top seller, and fix quantity and
- * price on the line. Step 2 takes the payment on a full-screen step that
- * replaces the lines rather than floating over them.
+ * One form, no pop-ups. Products, the customer, fulfilment and payment are
+ * on the same screen. The total and Create order stay pinned to the bottom.
+ * Type a code or name, scan a barcode, or tap a top seller, and fix quantity
+ * and price on the line.
  *
  * It used to be a tile grid, a cart in a slide-over sheet, and a checkout
  * dialog stacked on top of the sheet. On Android the stacked layers fought
@@ -44,7 +44,6 @@ import { apiFetch } from "@/lib/appPaths";
 import { offlineStorage } from "@/lib/offline-storage";
 import { invalidateAfterPosCheckout } from "@/lib/query-invalidation";
 import { Button } from "@/components/ui/button";
-import { PageHeader } from "@/components/PageHeader";
 import { useToast } from "@/hooks/use-toast";
 import { ToastAction } from "@/components/ui/toast";
 import { PosOrderLines } from "@/components/pos-order-lines";
@@ -52,6 +51,12 @@ import { PosTopSellers } from "@/components/pos-top-sellers";
 import { PosCheckoutStep, type OrderExpense, type TenderLeg } from "@/components/pos-checkout-step";
 import { freshSplitLegs, hasUnchosenMethod } from "@/lib/splitTender";
 import { classifyOrderDate, localIsoDate } from "@shared/orders/orderDate";
+import { isAtLeast } from "@shared/accessPolicy";
+
+const ORDER_FORM_DRAFT_KEY = "arcarna.orderFormDraft";
+import { PosCustomerHistory } from "@/components/pos-customer-history";
+import { clockAfterMinutes } from "@shared/time/tradingDay";
+import { useOrgTimezone } from "@/hooks/useDefaultTradingDay";
 import { posPrice, type PosProduct, type PosChannel } from "@/components/pos-types";
 import { PosCartPanel, type PosCartPanelProps, type PosCartItem, type PosCustomer } from "@/components/pos-cart-panel";
 import { ActionLoader } from "@/components/action-loader";
@@ -71,6 +76,8 @@ import {
 import { useBarcodeScanner } from "@/hooks/useBarcodeScanner";
 import { playScanFailBeep, playScanSuccessBeep } from "@/lib/posAudio";
 import { useAuth } from "@/hooks/useAuth";
+import { draftStatusLabel, readLocalOrderDraft, useOrderDraft } from "@/hooks/useOrderDraft";
+import { orderDraftPayloadSchema, type OrderDraftPayload } from "@shared/orders/orderDraft";
 import { usePosNarrow } from "@/hooks/usePosNarrow";
 import type { LocationPickerOption } from "@shared/schema";
 import type { GiftCardPaymentState } from "@/pages/pos/payments/GiftCardPayment";
@@ -86,9 +93,9 @@ import { cardLinkAmountOf, type CardLinkSale } from "@/lib/cardLinkSale";
 import { ProblemButton } from "@/components/problem/ProblemSheet";
 import { recordFunnel } from "@/lib/usage";
 
-/** "Confirm and take payment" (v1.2 Phase 4); the same verbs as the step's own button. */
+/** Price-guard confirm line. The button itself says Create order. */
 function confirmVerb(paymentMethod: string): string {
-  return paymentMethod === "tick" ? "place order" : "take payment";
+  return paymentMethod === "personal_use" ? "log personal use" : "create order";
 }
 
 type Product = PosProduct;
@@ -107,6 +114,9 @@ export interface PosEmbeddedProps {
   /** Called after a sale places successfully, with the new order's id, so the
    *  board can scroll to and flash the card that just landed on it. */
   onPlaced: (orderId: string) => void;
+  /** A draft chosen from the board's Drafts list. */
+  resumeDraftId?: string | null;
+  onResumeHandled?: () => void;
 }
 
 /** "4h 20m" for a live shift, matching the Shifts page's own duration format. */
@@ -183,11 +193,11 @@ function MyShiftSummary() {
 
 export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) {
   const { toast } = useToast();
-  const [narrowRef, narrow] = usePosNarrow();
+  const timeZone = useOrgTimezone();
+  const [narrowRef] = usePosNarrow();
   const [cart, setCart] = useState<CartItem[]>([]);
-  /** Which step is on screen. "pay" replaces the lines with the payment step. */
-  const [view, setView] = useState<"build" | "pay">("build");
   // Sale funnel (v1.2 Phase 8B): the step only, never what is on the sale.
+  // One form means payment is on screen as soon as the till opens.
   const hadLinesRef = useRef(false);
   useEffect(() => {
     const has = cart.length > 0;
@@ -195,8 +205,8 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
     hadLinesRef.current = has;
   }, [cart.length]);
   useEffect(() => {
-    if (view === "pay") recordFunnel("pay");
-  }, [view]);
+    recordFunnel("pay");
+  }, []);
 
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<string>("cash");
@@ -310,13 +320,26 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
   });
   const staff = staffData?.staff ?? [];
 
+  // Set while a draft is being put back, so this default does not overwrite
+  // the receipt choice that was saved with it.
+  const emailFromDraft = useRef(false);
   useEffect(() => {
+    if (emailFromDraft.current) {
+      emailFromDraft.current = false;
+      return;
+    }
     if (customerHasEmail(selectedCustomer) && selectedCustomer?.receiptEmailOptIn !== false) {
       setEmailReceipt(true);
     } else {
       setEmailReceipt(false);
     }
   }, [selectedCustomer?.id, selectedCustomer?.email, selectedCustomer?.hasEmail, selectedCustomer?.receiptEmailOptIn]);
+
+  /** WhatsApp, Needs attention, or a past-order return already filled the form. */
+  const externalPrefillRef = useRef(false);
+  /** Full order remembered when a past order is opened, applied once the form can paint it. */
+  const sessionReturnRef = useRef<{ payload: OrderDraftPayload; scroll: number } | null>(null);
+  const draftPayloadRef = useRef<OrderDraftPayload | null>(null);
 
   // Fetch products
   const { data: products = [], isLoading: productsLoading } = useQuery<PosProduct[]>({
@@ -337,6 +360,7 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
       setDraftConsumed(true);
       return;
     }
+    externalPrefillRef.current = true;
     const matched: CartItem[] = [];
     const unmatched: string[] = [];
     for (const item of draft.items) {
@@ -385,6 +409,7 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
     setIssueDraftConsumed(true);
     const draft = consumeSaleIssueDraft();
     if (!draft) return;
+    externalPrefillRef.current = true;
     const sale = readSaleIssuePayload(draft.payload);
     const matched: CartItem[] = [];
     let unmatched = 0;
@@ -423,6 +448,82 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
       description: notes.length ? `Check it before taking payment: ${notes.join("; ")}.` : "Check it, then take payment.",
     });
   }, [issueDraftConsumed, productsLoading, customersLoading, products, customers, toast]);
+
+  const orderDraftRestored = useRef(false);
+  useEffect(() => {
+    if (orderDraftRestored.current || productsLoading || customersLoading) return;
+    orderDraftRestored.current = true;
+    const raw = sessionStorage.getItem(ORDER_FORM_DRAFT_KEY);
+    if (!raw) return;
+    sessionStorage.removeItem(ORDER_FORM_DRAFT_KEY);
+    try {
+      const data = JSON.parse(raw) as {
+        v?: number;
+        payload?: unknown;
+        cart?: { productId: string; quantity: number; customPrice: number }[];
+        customerId?: string | null;
+        paymentMethod?: string;
+        fulfilmentMethod?: "collection" | "delivery";
+        orderDate?: string;
+        dueTime?: string;
+        dueMinutes?: number | null;
+        channel?: PosChannel;
+        scroll?: number;
+      };
+      if (data.v === 2) {
+        const parsed = orderDraftPayloadSchema.safeParse(data.payload);
+        if (!parsed.success) return;
+        externalPrefillRef.current = true;
+        sessionReturnRef.current = { payload: parsed.data, scroll: data.scroll ?? 0 };
+        return;
+      }
+      if (data.v !== 1) return;
+      externalPrefillRef.current = true;
+      const byId = new Map(products.map((product) => [product.id, product]));
+      const lines: CartItem[] = [];
+      for (const line of data.cart ?? []) {
+        const product = byId.get(line.productId);
+        if (!product) continue;
+        lines.push({
+          product,
+          quantity: line.quantity,
+          customPrice: line.customPrice,
+          subtotal: line.quantity * line.customPrice,
+        });
+      }
+      if (lines.length > 0) setCart(lines);
+      const customer = customers.find((row) => row.id === data.customerId);
+      if (customer) setSelectedCustomer(customer);
+      if (data.paymentMethod) setPaymentMethod(data.paymentMethod);
+      if (data.fulfilmentMethod) setFulfilmentMethod(data.fulfilmentMethod);
+      if (data.orderDate) setOrderDate(data.orderDate);
+      if (data.channel === "pos" || data.channel === "phone" || data.channel === "whatsapp") setChannel(data.channel);
+      setDueTouched(true);
+      setDueMinutes(data.dueMinutes ?? null);
+      setDueTime(data.dueTime ?? "");
+      const scroll = data.scroll ?? 0;
+      requestAnimationFrame(() => {
+        document.querySelector<HTMLElement>("[data-testid='order-form-scroll']")?.scrollTo(0, scroll);
+        document.querySelector<HTMLInputElement>("[data-testid='line-product-new']")?.focus();
+      });
+    } catch {
+      // A damaged note is ignored. The till opens empty.
+    }
+  }, [productsLoading, customersLoading, products, customers]);
+
+  const stashOrderDraft = useCallback(() => {
+    const payload = draftPayloadRef.current;
+    if (!payload) return;
+    try {
+      const scroller = document.querySelector<HTMLElement>("[data-testid='order-form-scroll']");
+      sessionStorage.setItem(
+        ORDER_FORM_DRAFT_KEY,
+        JSON.stringify({ v: 2, payload, scroll: scroller?.scrollTop ?? 0 }),
+      );
+    } catch {
+      // If the browser will not store it, opening the past order in a new tab still leaves this sale on screen.
+    }
+  }, []);
 
   // Tax rate must come from the org, not a constant: the till previously
   // showed 10% while the server charged 20%, so the customer was quoted one
@@ -511,6 +612,36 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
       toast({ title: "Could not set a due time", description: error.message, variant: "destructive" });
     },
   });
+
+  const closeDraftRef = useRef<(outcome: "submitted" | "discarded") => Promise<void>>(async () => {});
+
+  const clearTillForm = useCallback(() => {
+    setEditingIssue(null);
+    setSaleRef(newClientOrderId());
+    setCart([]);
+    setSelectedCustomer(null);
+    setAppliedPromo(null);
+    setPromoCode("");
+    setFulfilmentMethod("collection");
+    setDelivery(EMPTY_POS_DELIVERY);
+    setDeliveryFeeInput(null);
+    setOrderDate(localIsoDate());
+    setOrderExpenses([]);
+    setSplitPayment(false);
+    setTenderLegs(freshSplitLegs());
+    setExpenseDescription("");
+    setExpenseAmount("");
+    setPersonalUseReason("");
+    setGiftCardPayment(null);
+    setRedeemPoints(0);
+    setPointsRedemptionAmount(0);
+    setRedeemInput("");
+    setChannel("pos");
+    setDueMinutes(null);
+    setDueTime("");
+    setDueTouched(false);
+    setAssigneeUserId("");
+  }, []);
 
   // Place order mutation
   const placeOrderMutation = useMutation({
@@ -632,7 +763,9 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
       } else {
         toast({
           title: "Order Placed",
-          description: "Order has been successfully processed.",
+          description: data?.order?.orderNumber
+            ? `Order ${data.order.orderNumber}.`
+            : "Order has been successfully processed.",
           ...(createdOrderId && hadNoDueTime
             ? {
                 action: (
@@ -663,33 +796,8 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
         void queryClient.invalidateQueries({ queryKey: ["/api/sale-issues"] });
         void queryClient.invalidateQueries({ queryKey: ["/api/sale-issues/summary"] });
       }
-      setEditingIssue(null);
-      setSaleRef(newClientOrderId());
-      setCart([]);
-      setSelectedCustomer(null);
-      // One customer's promotion must not follow the next sale.
-      setAppliedPromo(null);
-      setPromoCode("");
-      setView("build");
-      // Back to the default, or one delivery quietly marks every later sale on
-      // this till as a delivery too.
-      setFulfilmentMethod("collection");
-      setDelivery(EMPTY_POS_DELIVERY);
-      setDeliveryFeeInput(null);
-      // Same reason: one backdated entry must not quietly date every later
-      // sale on this till to last week.
-      setOrderDate(localIsoDate());
-      setOrderExpenses([]);
-      // Nor may one split sale leave its rows and amounts for the next customer.
-      setSplitPayment(false);
-      setTenderLegs(freshSplitLegs());
-      setExpenseDescription("");
-      setExpenseAmount("");
-      setChannel("pos");
-      setDueMinutes(null);
-      setDueTime("");
-      setDueTouched(false);
-      setAssigneeUserId("");
+      void closeDraftRef.current("submitted");
+      clearTillForm();
       await invalidateAfterPosCheckout(queryClient);
 
       // The lines editor is back on screen the instant the mutation settles;
@@ -718,6 +826,236 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
       });
     },
   });
+
+  const draftPayload = useMemo((): OrderDraftPayload | null => {
+    const lines = cart
+      .filter(
+        (line) =>
+          Number.isFinite(line.quantity) &&
+          line.quantity > 0 &&
+          Number.isFinite(line.customPrice) &&
+          line.customPrice >= 0 &&
+          line.customPrice <= 1_000_000,
+      )
+      .slice(0, 200)
+      .map((line) => ({
+        productId: line.product.id,
+        quantity: line.quantity,
+        customPrice: line.customPrice,
+      }));
+    if (lines.length === 0 && !selectedCustomer) return null;
+    const name = selectedCustomer?.name || cart[0]?.product.name || "Draft";
+    const label = (!selectedCustomer && cart.length > 1 ? `${name} +${cart.length - 1}` : name).slice(0, 120);
+    return {
+      lines,
+      customerId: selectedCustomer?.id ?? null,
+      paymentMethod: paymentMethod.slice(0, 50),
+      personalUseReason: personalUseReason.slice(0, 500),
+      splitPayment,
+      tenderLegs: tenderLegs.slice(0, 8).map((leg) => ({ method: leg.method.slice(0, 50), amount: leg.amount.slice(0, 20) })),
+      orderDate: orderDate.slice(0, 10),
+      fulfilmentMethod,
+      delivery: {
+        address: delivery.address.slice(0, 500),
+        postcode: delivery.postcode.slice(0, 20),
+        notes: delivery.notes.slice(0, 500),
+        saveAsCustomerAddress: delivery.saveAsCustomerAddress,
+      },
+      deliveryFeeInput: deliveryFeeInput ? deliveryFeeInput.slice(0, 20) : null,
+      promoCode: promoCode.slice(0, 50),
+      redeemPoints: Math.max(0, Math.min(1_000_000, Math.floor(redeemPoints) || 0)),
+      orderExpenses: orderExpenses
+        .filter((expense) => Number.isFinite(expense.amount) && expense.amount >= 0)
+        .slice(0, 20)
+        .map((expense) => ({
+        category: expense.category.slice(0, 100),
+        description: expense.description.slice(0, 500),
+        amount: expense.amount,
+      })),
+      emailReceipt,
+      channel,
+      dueTime: dueTime.slice(0, 8),
+      dueMinutes,
+      dueTouched,
+      assigneeUserId: assigneeUserId.slice(0, 255),
+      label,
+    };
+  }, [
+    cart,
+    selectedCustomer,
+    paymentMethod,
+    personalUseReason,
+    splitPayment,
+    tenderLegs,
+    orderDate,
+    fulfilmentMethod,
+    delivery,
+    deliveryFeeInput,
+    promoCode,
+    redeemPoints,
+    orderExpenses,
+    emailReceipt,
+    channel,
+    dueTime,
+    dueMinutes,
+    dueTouched,
+    assigneeUserId,
+  ]);
+
+  const orderDraft = useOrderDraft(
+    authUser?.orgId ?? null,
+    authUser?.id && authUser.id !== "pending" ? authUser.id : null,
+    draftPayload,
+    !!draftPayload && !editingIssue && !placeOrderMutation.isPending,
+  );
+  closeDraftRef.current = orderDraft.close;
+  const draftControls = useRef(orderDraft);
+  draftControls.current = orderDraft;
+
+  const paintDraft = useCallback(
+    (payload: OrderDraftPayload): string => {
+      draftControls.current.suspend();
+      const byId = new Map(products.map((product) => [product.id, product]));
+      const lines: CartItem[] = [];
+      let missingLines = 0;
+      for (const line of payload.lines) {
+        const product = byId.get(line.productId);
+        if (!product) {
+          missingLines += 1;
+          continue;
+        }
+        lines.push({
+          product,
+          quantity: line.quantity,
+          customPrice: line.customPrice,
+          subtotal: line.quantity * line.customPrice,
+        });
+      }
+      setCart(lines);
+      const customer = payload.customerId ? (customers.find((row) => row.id === payload.customerId) ?? null) : null;
+      setSelectedCustomer(customer);
+      setPaymentMethod(payload.paymentMethod || "cash");
+      setPersonalUseReason(payload.personalUseReason || "");
+      setSplitPayment(payload.splitPayment);
+      setTenderLegs(payload.tenderLegs.length > 0 ? payload.tenderLegs : freshSplitLegs());
+      setOrderDate(payload.orderDate || localIsoDate());
+      setFulfilmentMethod(payload.fulfilmentMethod);
+      setDelivery({ ...EMPTY_POS_DELIVERY, ...payload.delivery });
+      setDeliveryFeeInput(payload.deliveryFeeInput);
+      setPromoCode(payload.promoCode || "");
+      setAppliedPromo(null);
+      setRedeemPoints(payload.redeemPoints || 0);
+      setRedeemInput(payload.redeemPoints ? String(payload.redeemPoints) : "");
+      setOrderExpenses(payload.orderExpenses);
+      emailFromDraft.current = payload.customerId != null;
+      setEmailReceipt(payload.emailReceipt);
+      if (payload.channel === "pos" || payload.channel === "phone" || payload.channel === "whatsapp") {
+        setChannel(payload.channel);
+      }
+      setDueTouched(true);
+      setDueMinutes(payload.dueMinutes);
+      setDueTime(payload.dueTime || "");
+      setAssigneeUserId(payload.assigneeUserId || "");
+      return [
+        missingLines ? `${missingLines} line(s) are no longer in the catalogue` : "",
+        payload.customerId && !customer ? "the customer was not found" : "",
+        payload.promoCode ? "apply the promotion again if it is still wanted" : "",
+        payload.paymentMethod === "gift_card" ? "look up the gift card again before creating the order" : "",
+      ]
+        .filter(Boolean)
+        .join("; ");
+    },
+    [products, customers],
+  );
+
+  draftPayloadRef.current = draftPayload;
+
+  const sessionReturnApplied = useRef(false);
+  useEffect(() => {
+    if (sessionReturnApplied.current || productsLoading || customersLoading) return;
+    const pending = sessionReturnRef.current;
+    if (!pending) return;
+    sessionReturnApplied.current = true;
+    sessionReturnRef.current = null;
+    const notes = paintDraft(pending.payload);
+    const orgId = authUser?.orgId;
+    const userId = authUser?.id;
+    if (orgId && userId && userId !== "pending") {
+      const local = readLocalOrderDraft(orgId, userId);
+      if (local?.id) draftControls.current.adopt(local.id, local.revision);
+    }
+    const scroll = pending.scroll;
+    requestAnimationFrame(() => {
+      document.querySelector<HTMLElement>("[data-testid='order-form-scroll']")?.scrollTo(0, scroll);
+      document.querySelector<HTMLInputElement>("[data-testid='line-product-new']")?.focus();
+    });
+    if (notes) toast({ title: "Draft restored on this till", description: notes });
+  }, [productsLoading, customersLoading, authUser?.orgId, authUser?.id, paintDraft, toast]);
+
+  const localDraftBootstrapped = useRef(false);
+  useEffect(() => {
+    if (localDraftBootstrapped.current || productsLoading || customersLoading) return;
+    const orgId = authUser?.orgId;
+    const userId = authUser?.id;
+    if (!orgId || !userId || userId === "pending") return;
+    localDraftBootstrapped.current = true;
+    if (externalPrefillRef.current) return;
+    const local = readLocalOrderDraft(orgId, userId);
+    if (!local) return;
+    const notes = paintDraft(local.payload);
+    if (local.id) draftControls.current.adopt(local.id, local.revision);
+    if (notes) toast({ title: "Draft restored on this till", description: notes });
+  }, [productsLoading, customersLoading, authUser?.orgId, authUser?.id, paintDraft, toast]);
+
+  const resumeSeen = useRef<string | null>(null);
+  const resumeTicket = useRef(0);
+  const onResumeHandledRef = useRef(embedded?.onResumeHandled);
+  onResumeHandledRef.current = embedded?.onResumeHandled;
+  useEffect(() => {
+    const id = embedded?.resumeDraftId ?? null;
+    if (!id) {
+      resumeSeen.current = null;
+      return;
+    }
+    if (productsLoading || customersLoading || resumeSeen.current === id) return;
+    resumeSeen.current = id;
+    const ticket = ++resumeTicket.current;
+    void (async () => {
+      const res = await apiFetch(`/api/order-drafts/${id}`);
+      if (ticket !== resumeTicket.current) return;
+      if (!res.ok) {
+        toast({ title: "Draft not found", description: "It may have been discarded.", variant: "destructive" });
+        onResumeHandledRef.current?.();
+        return;
+      }
+      const body = (await res.json()) as { id?: string; revision?: number; payload?: unknown };
+      const parsed = orderDraftPayloadSchema.safeParse(body.payload);
+      if (!parsed.success || !body.id || typeof body.revision !== "number") {
+        toast({ title: "Draft could not be opened", variant: "destructive" });
+        onResumeHandledRef.current?.();
+        return;
+      }
+      const notes = paintDraft(parsed.data);
+      if (ticket !== resumeTicket.current) return;
+      draftControls.current.adopt(body.id, body.revision);
+      toast({
+        title: "Draft opened",
+        description: notes || "Check it, then create the order when you are ready.",
+      });
+      onResumeHandledRef.current?.();
+    })();
+  }, [embedded?.resumeDraftId, productsLoading, customersLoading, paintDraft, toast]);
+
+  useEffect(() => {
+    const onDiscarded = (event: Event) => {
+      const id = (event as CustomEvent<{ id?: string }>).detail?.id;
+      if (!id || id !== draftControls.current.draftId()) return;
+      void draftControls.current.close("discarded");
+      clearTillForm();
+    };
+    window.addEventListener("arcarna-draft-discarded", onDiscarded);
+    return () => window.removeEventListener("arcarna-draft-discarded", onDiscarded);
+  }, [clearTillForm]);
 
   // Adds a line, or bumps the quantity of the line the product is already on.
   // No toast: the line appearing in the editor is the confirmation.
@@ -780,9 +1118,6 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
   );
 
   useBarcodeScanner((code) => {
-    // A scan while taking payment is almost always the next customer's first
-    // item. Bring the lines back rather than adding to an order being paid.
-    if (view === "pay") setView("build");
     void addProductByBarcode(code);
   });
 
@@ -798,26 +1133,36 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
     setRedeemInput("");
   }, [selectedCustomer?.id]);
 
-  // Suggested due time follows fulfilment/channel (brief: delivery pre-selects
-  // +45, Phone/WhatsApp pre-select +30) until the cashier picks — or explicitly
-  // clears — one themselves.
+  // Suggested due time follows fulfilment/channel (delivery +45, phone or
+  // WhatsApp +30) until the cashier picks or clears one. The suggestion is
+  // stored as a clock time in the shop's timezone, so it is not added again
+  // when the same order is opened later. A future day has no suggestion:
+  // "in 30 minutes" does not mean anything on a day that has not started.
   useEffect(() => {
     if (dueTouched) return;
-    setDueTime("");
-    if (fulfilmentMethod === "delivery") {
-      setDueMinutes(45);
-    } else if (channel === "phone" || channel === "whatsapp") {
-      setDueMinutes(30);
-    } else {
+    const verdict = classifyOrderDate(orderDate, localIsoDate());
+    if (verdict.ok && verdict.dating.kind === "preorder") {
       setDueMinutes(null);
+      setDueTime("");
+      return;
     }
-  }, [fulfilmentMethod, channel, dueTouched]);
+    const minutes =
+      fulfilmentMethod === "delivery" ? 45 : channel === "phone" || channel === "whatsapp" ? 30 : null;
+    setDueMinutes(minutes);
+    setDueTime(minutes == null ? "" : clockAfterMinutes(minutes, timeZone));
+  }, [fulfilmentMethod, channel, dueTouched, orderDate, timeZone]);
 
   const selectDueMinutes = useCallback((minutes: number) => {
     setDueTouched(true);
-    setDueTime("");
-    setDueMinutes((current) => (current === minutes ? null : minutes));
-  }, []);
+    setDueMinutes((current) => {
+      if (current === minutes) {
+        setDueTime("");
+        return null;
+      }
+      setDueTime(clockAfterMinutes(minutes, timeZone));
+      return minutes;
+    });
+  }, [timeZone]);
 
   const selectDueTime = useCallback((time: string) => {
     setDueTouched(true);
@@ -922,19 +1267,10 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
     [priceGuard.enabled, paymentMethod, cart],
   );
 
-  // Handle checkout: move to the payment step.
+  // Jump to payment on the same form. Creating the order is the footer button.
   const handleCheckout = useCallback(() => {
-    if (placeOrderMutation.isPending) return;
-    if (cart.length === 0) {
-      toast({
-        title: "Nothing on the order",
-        description: "Add at least one line before continuing",
-        variant: "destructive",
-      });
-      return;
-    }
-    setView("pay");
-  }, [cart.length, placeOrderMutation.isPending, toast]);
+    document.getElementById("order-payment")?.scrollIntoView({ block: "nearest" });
+  }, []);
 
   // Add expense to order
   const addExpense = () => {
@@ -1037,6 +1373,15 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
       toast({
         title: "Set a due time",
         description: "Pre-orders need a due time before payment.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (cart.some((item) => item.quantityInvalid || (item.quantityInput !== undefined && item.quantityInput.trim() === ""))) {
+      toast({
+        title: "Check the quantities",
+        description: "Each line needs a quantity above zero before the order can be created.",
         variant: "destructive",
       });
       return;
@@ -1265,7 +1610,7 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
     <div
       ref={narrowRef}
       className={cn(
-        "pos-shell @container flex flex-col overflow-hidden @[640px]:flex-row",
+        "pos-shell @container flex flex-col overflow-hidden",
         embedded ? "h-full" : "pos-viewport",
       )}
     >
@@ -1286,168 +1631,118 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
           }}
         />
       )}
-      {view === "pay" ? (
-        <div className="min-h-0 flex-1">
-          <PosCheckoutStep
-            total={total}
-            itemCount={cartItemCount}
-            customerName={selectedCustomer?.name ?? null}
-            customerEmail={
-              selectedCustomer?.email ??
-              selectedCustomer?.emailMasked ??
-              (customerHasEmail(selectedCustomer) ? "the email on file" : null)
-            }
-            paymentMethod={paymentMethod}
-            setPaymentMethod={setPaymentMethod}
-            personalUseReason={personalUseReason}
-            setPersonalUseReason={setPersonalUseReason}
-            splitPayment={splitPayment}
-            setSplitPayment={toggleSplitPayment}
-            tenderLegs={tenderLegs}
-            setTenderLegs={setTenderLegs}
-            splitRemaining={splitRemaining}
-            orderDate={orderDate}
-            setOrderDate={setOrderDate}
-            fulfilmentMethod={fulfilmentMethod}
-            setFulfilmentMethod={setFulfilmentMethod}
-            delivery={delivery}
-            setDelivery={setDelivery}
-            deliveryFeeSlot={
-              paymentMethod === "personal_use" ? null : (
-                <PosDeliveryFee
-                  value={deliveryFeeInput}
-                  onChange={setDeliveryFeeInput}
-                  name={deliveryFeeName}
-                  defaultPrice={orgSettings?.deliveryFeePrice ?? DELIVERY_FEE_PRICE_DEFAULT}
-                  disabled={submitting}
-                />
-              )
-            }
-            deliveryFee={deliveryFee}
-            deliveryFeeName={deliveryFeeName}
-            customerId={selectedCustomer?.id ?? null}
-            giftCardPayment={giftCardPayment}
-            setGiftCardPayment={setGiftCardPayment}
-            channel={channel}
-            setChannel={setChannel}
-            dueMinutes={dueMinutes}
-            dueTime={dueTime}
-            onSelectDueMinutes={selectDueMinutes}
-            onSelectDueTime={selectDueTime}
-            onClearDue={clearDue}
-            duePreorderRequired={isPreorderDate}
-            assigneeUserId={assigneeUserId}
-            setAssigneeUserId={setAssigneeUserId}
-            staff={staff}
-            currentUserId={(authUser as { id?: string } | null)?.id ?? null}
-            expenses={orderExpenses}
-            expenseCategory={expenseCategory}
-            setExpenseCategory={setExpenseCategory}
-            expenseDescription={expenseDescription}
-            setExpenseDescription={setExpenseDescription}
-            expenseAmount={expenseAmount}
-            setExpenseAmount={setExpenseAmount}
-            onAddExpense={addExpense}
-            onRemoveExpense={removeExpense}
-            emailReceipt={emailReceipt}
-            setEmailReceipt={setEmailReceipt}
-            submitting={submitting}
-            onBack={() => setView("build")}
-            onConfirm={processPayment}
-            priceGuardPanel={
-              <PriceGuardPayPanel
-                lines={guardLines}
-                choice={priceGuard.choice}
-                onChange={priceGuard.setChoice}
-                managers={priceGuard.managers}
-                disabled={submitting}
-              />
-            }
-            confirmLabel={guardLines.length > 0 ? `Confirm and ${confirmVerb(paymentMethod)}` : undefined}
-            cardLinkEnabled={cardLinkStatus?.enabled === true}
-          />
-        </div>
-      ) : (
-        <>
-          {/* Step 1: the order itself. */}
-          <div className="pos-products-panel flex min-h-0 flex-1 flex-col @[640px]:max-w-[62%] @[640px]:flex-[1.62]">
-            {embedded ? (
-              (sellingLocation || noLocationWillResolve) && (
-                <div className="shrink-0 px-4 pb-2 pt-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-xs font-medium uppercase tracking-wider text-metal-muted">Step 1 of 2 · Build the order</p>
-                    <ProblemButton compact />
-                  </div>
-                  {sellingLocation ? (
-                    <p className="mt-1 text-xs text-metal-muted" data-testid="pos-selling-location">
-                      Selling at <span className="font-medium text-foreground">{sellingLocation.name}</span>
-                    </p>
-                  ) : (
-                    <p className="mt-1 text-xs font-medium text-destructive" data-testid="pos-no-location-warning">
-                      No selling location is set up. Ask an admin to set an organization default
-                      location, or a default location for this user, before taking payment.
-                    </p>
+      <div className="flex min-h-0 flex-1 flex-col">
+        <div className="pos-section-header shrink-0 px-4 pb-2 pt-3 sm:px-6">
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <h2 className="text-2xl font-semibold tracking-tight text-metal-warm-white">New order</h2>
+              {draftStatusLabel(orderDraft.status) && (
+                <p className="mt-1 text-sm text-metal-muted" data-testid="order-draft-status">
+                  {draftStatusLabel(orderDraft.status)}
+                  {orderDraft.status === "error" && (
+                    <button type="button" className="ml-2 min-h-11 underline" onClick={() => void orderDraft.retry()} data-testid="button-draft-retry">
+                      Try again
+                    </button>
                   )}
-                  <MyShiftSummary />
-                </div>
-              )
-            ) : (
-              <div className="pos-section-header shrink-0 px-4 pb-3 pt-3 sm:px-6 sm:pt-5">
-                <PageHeader
-                  className="mb-0 sm:flex-col sm:items-stretch sm:justify-start 2xl:flex-row 2xl:items-start 2xl:justify-between"
-                  eyebrow="Step 1 of 2 · Build the order"
-                  title="Create Order"
-                  question={narrow ? undefined : "What is this customer buying?"}
-                  explanation={narrow ? undefined : "Type a code or name, scan, or tap a top seller. Fix quantity and price on the line."}
-                  action={<ProblemButton compact />}
-                />
-                {sellingLocation ? (
-                  <p className="mt-2 text-xs text-metal-muted" data-testid="pos-selling-location">
-                    Selling at <span className="font-medium text-foreground">{sellingLocation.name}</span>
-                  </p>
-                ) : noLocationWillResolve ? (
-                  <p
-                    className="mt-2 text-xs font-medium text-destructive"
-                    data-testid="pos-no-location-warning"
-                  >
-                    No selling location is set up. Ask an admin to set an organization default
-                    location, or a default location for this user, before taking payment.
-                  </p>
-                ) : null}
-                <MyShiftSummary />
-              </div>
-            )}
-            {lastSaleId && <TillLastSaleLabels key={lastSaleId} orderId={lastSaleId} onDismiss={() => setLastSaleId(null)} />}
-            {editingIssue && (
-              <div
-                className="mx-4 mt-2 shrink-0 rounded-lg border border-metal-edge px-3 py-2 text-xs sm:mx-6"
-                style={{ backgroundColor: "color-mix(in srgb, var(--warning) 12%, var(--card))" }}
-                data-testid="pos-editing-sale-issue"
+                  {orderDraft.status !== "idle" && orderDraft.status !== "saving" && (
+                    <button
+                      type="button"
+                      className="ml-2 min-h-11 underline"
+                      onClick={() => {
+                        void orderDraft.close("discarded");
+                        clearTillForm();
+                      }}
+                      data-testid="button-discard-draft"
+                    >
+                      Discard draft
+                    </button>
+                  )}
+                </p>
+              )}
+              {sellingLocation ? (
+                <p className="mt-1 text-sm text-metal-muted" data-testid="pos-selling-location">
+                  Selling at <span className="font-medium text-foreground">{sellingLocation.name}</span>
+                </p>
+              ) : noLocationWillResolve ? (
+                <p className="mt-1 text-sm font-medium text-destructive" data-testid="pos-no-location-warning">
+                  No selling location is set up. Ask an admin to set an organization default
+                  location, or a default location for this user, before creating an order.
+                </p>
+              ) : null}
+            </div>
+            <ProblemButton compact />
+          </div>
+          <nav aria-label="Order sections" className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm">
+            <a className="inline-flex min-h-11 items-center underline" href="#order-products">Products</a>
+            <a className="inline-flex min-h-11 items-center underline" href="#order-fulfilment">Fulfilment</a>
+            <a className="inline-flex min-h-11 items-center underline" href="#order-customer">Customer</a>
+            <a className="inline-flex min-h-11 items-center underline" href="#order-payment" data-testid="mobile-checkout-button">Payment</a>
+          </nav>
+          <MyShiftSummary />
+        </div>
+        {orderDraft.status === "conflict" && (
+          <div
+            className="mx-4 mt-2 shrink-0 rounded-lg border border-metal-edge px-3 py-2 text-sm sm:mx-6"
+            style={{ backgroundColor: "color-mix(in srgb, var(--warning) 12%, var(--card))" }}
+            data-testid="order-draft-conflict"
+          >
+            <p>This draft was changed on another till.</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <Button
+                type="button"
+                size="touch"
+                variant="outline"
+                disabled={!orderDraft.serverCopy}
+                onClick={() => {
+                  if (!orderDraft.serverCopy) return;
+                  const id = orderDraft.draftId();
+                  const notes = paintDraft(orderDraft.serverCopy);
+                  if (id && orderDraft.conflictRevision != null) orderDraft.adopt(id, orderDraft.conflictRevision);
+                  if (notes) toast({ title: "Draft opened", description: notes });
+                }}
+                data-testid="button-draft-use-other"
               >
-                <span className="font-medium text-foreground">Editing a sale from Needs attention</span>
-                {editingIssue.rungByName ? ` · rung by ${editingIssue.rungByName}` : ""}. It is recorded once, as
-                their sale, when you take payment.{" "}
-                <button
-                  type="button"
-                  className="underline"
-                  onClick={() => {
-                    setEditingIssue(null);
-                    setSaleRef(newClientOrderId());
-                    setCart([]);
-                  }}
-                  data-testid="pos-editing-sale-issue-cancel"
-                >
-                  Stop editing
-                </button>
-              </div>
-            )}
-
-            {/* Plain overflow scrolling, not a scroll-area widget: touch
-                scrolling and the on-screen keyboard both behave with the
-                browser's own scroller. */}
-            {/* Extra bottom room on phones so the last card can scroll clear of
-                the app's floating assistant buttons. */}
-            <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-28 pt-3 sm:px-6 sm:pb-6">
+                Use the other till’s copy
+              </Button>
+              <Button type="button" size="touch" variant="outline" onClick={() => orderDraft.keepMine()} data-testid="button-draft-keep-mine">
+                Keep this till’s copy
+              </Button>
+            </div>
+          </div>
+        )}
+        {lastSaleId && <TillLastSaleLabels key={lastSaleId} orderId={lastSaleId} onDismiss={() => setLastSaleId(null)} />}
+        {editingIssue && (
+          <div
+            className="mx-4 mt-2 shrink-0 rounded-lg border border-metal-edge px-3 py-2 text-xs sm:mx-6"
+            style={{ backgroundColor: "color-mix(in srgb, var(--warning) 12%, var(--card))" }}
+            data-testid="pos-editing-sale-issue"
+          >
+            <span className="font-medium text-foreground">Editing a sale from Needs attention</span>
+            {editingIssue.rungByName ? ` · rung by ${editingIssue.rungByName}` : ""}. It is recorded once, as
+            their sale, when you create the order.{" "}
+            <button
+              type="button"
+              className="underline"
+              onClick={() => {
+                setEditingIssue(null);
+                setSaleRef(newClientOrderId());
+                setCart([]);
+              }}
+              data-testid="pos-editing-sale-issue-cancel"
+            >
+              Stop editing
+            </button>
+          </div>
+        )}
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3 sm:px-6" data-testid="order-form-scroll">
+          <div className="grid items-start gap-6 @[800px]:grid-cols-[minmax(0,1.6fr)_minmax(16rem,1fr)]">
+            <section id="order-products" className="min-w-0">
+              {cart.length > 0 && (
+                <p className="mb-2 text-sm text-metal-muted" data-testid="order-line-count">
+                  {cart.length} {cart.length === 1 ? "line" : "lines"} · {cartItemCount}{" "}
+                  {cartItemCount === 1 ? "item" : "items"}
+                </p>
+              )}
               {productsLoading ? (
                 <p className="py-6 text-sm text-metal-muted" data-testid="pos-products-loading">
                   Loading the catalogue…
@@ -1466,64 +1761,140 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
                   }
                 />
               )}
-
-              {/* On a narrow form — a phone, or the Operations Centre's pane —
-                  the customer, discounts and totals sit under the lines
-                  rather than beside them. */}
-              {narrow && (
-                <div className="pos-mobile-summary mt-6 rounded-xl border border-metal-edge p-4" data-testid="pos-mobile-summary">
-                  <PosCartPanel {...cartPanelProps} showCheckoutButton={false} />
+            </section>
+            <div className="min-w-0 space-y-4">
+              <section id="order-customer">
+                <PosCartPanel {...cartPanelProps} showCheckoutButton={false} />
+                {selectedCustomer && isAtLeast((authUser as { role?: string } | null)?.role, "MANAGER") && (
+                  <PosCustomerHistory customerId={selectedCustomer.id} onBeforeLeave={stashOrderDraft} />
+                )}
+              </section>
+              <PosCheckoutStep
+                continuous
+                total={total}
+                itemCount={cartItemCount}
+                customerName={selectedCustomer?.name ?? null}
+                customerEmail={
+                  selectedCustomer?.email ??
+                  selectedCustomer?.emailMasked ??
+                  (customerHasEmail(selectedCustomer) ? "the email on file" : null)
+                }
+                paymentMethod={paymentMethod}
+                setPaymentMethod={setPaymentMethod}
+                personalUseReason={personalUseReason}
+                setPersonalUseReason={setPersonalUseReason}
+                splitPayment={splitPayment}
+                setSplitPayment={toggleSplitPayment}
+                tenderLegs={tenderLegs}
+                setTenderLegs={setTenderLegs}
+                splitRemaining={splitRemaining}
+                orderDate={orderDate}
+                setOrderDate={setOrderDate}
+                fulfilmentMethod={fulfilmentMethod}
+                setFulfilmentMethod={setFulfilmentMethod}
+                delivery={delivery}
+                setDelivery={setDelivery}
+                deliveryFeeSlot={
+                  paymentMethod === "personal_use" ? null : (
+                    <PosDeliveryFee
+                      value={deliveryFeeInput}
+                      onChange={setDeliveryFeeInput}
+                      name={deliveryFeeName}
+                      defaultPrice={orgSettings?.deliveryFeePrice ?? DELIVERY_FEE_PRICE_DEFAULT}
+                      disabled={submitting}
+                    />
+                  )
+                }
+                deliveryFee={deliveryFee}
+                deliveryFeeName={deliveryFeeName}
+                customerId={selectedCustomer?.id ?? null}
+                giftCardPayment={giftCardPayment}
+                setGiftCardPayment={setGiftCardPayment}
+                channel={channel}
+                setChannel={setChannel}
+                dueMinutes={dueMinutes}
+                dueTime={dueTime}
+                onSelectDueMinutes={selectDueMinutes}
+                onSelectDueTime={selectDueTime}
+                onClearDue={clearDue}
+                duePreorderRequired={isPreorderDate}
+                timeZone={timeZone}
+                assigneeUserId={assigneeUserId}
+                setAssigneeUserId={setAssigneeUserId}
+                staff={staff}
+                currentUserId={(authUser as { id?: string } | null)?.id ?? null}
+                expenses={orderExpenses}
+                expenseCategory={expenseCategory}
+                setExpenseCategory={setExpenseCategory}
+                expenseDescription={expenseDescription}
+                setExpenseDescription={setExpenseDescription}
+                expenseAmount={expenseAmount}
+                setExpenseAmount={setExpenseAmount}
+                onAddExpense={addExpense}
+                onRemoveExpense={removeExpense}
+                emailReceipt={emailReceipt}
+                setEmailReceipt={setEmailReceipt}
+                submitting={submitting}
+                onBack={() => undefined}
+                onConfirm={processPayment}
+                priceGuardPanel={
+                  <PriceGuardPayPanel
+                    lines={guardLines}
+                    choice={priceGuard.choice}
+                    onChange={priceGuard.setChoice}
+                    managers={priceGuard.managers}
+                    disabled={submitting}
+                  />
+                }
+                confirmLabel={guardLines.length > 0 ? `Confirm and ${confirmVerb(paymentMethod)}` : undefined}
+                cardLinkEnabled={cardLinkStatus?.enabled === true}
+              />
+            </div>
+          </div>
+        </div>
+        <div
+          className="pos-action-bar shrink-0 py-3 pl-4 pr-[4.75rem] sm:px-6"
+          style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom, 0px))" }}
+        >
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <div className="truncate text-sm text-metal-muted">
+                {cartItemCount} {cartItemCount === 1 ? "item" : "items"}
+                {selectedCustomer ? ` · ${selectedCustomer.name}` : ""}
+              </div>
+              <div className="text-2xl font-bold tabular-nums text-metal-warm-white" data-testid="mobile-order-total">
+                <span data-testid="checkout-total">£{total.toFixed(2)}</span>
+              </div>
+              {deliveryFee > 0 && (
+                <div className="truncate text-sm text-metal-muted" data-testid="checkout-delivery-fee">
+                  incl. {deliveryFeeName.toLowerCase()} £{deliveryFee.toFixed(2)}
                 </div>
               )}
             </div>
-
-            {narrow && (
-              <div
-                // Right padding keeps the button clear of the app's floating
-                // chat launcher, which sits fixed in the bottom-right corner.
-                className="pos-action-bar shrink-0 py-3 pl-4 pr-[4.75rem]"
-                style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom, 0px))" }}
-              >
-                <div className="flex items-center justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="truncate text-xs text-metal-muted">
-                      {cartItemCount} {cartItemCount === 1 ? "item" : "items"}
-                      {selectedCustomer ? ` · ${selectedCustomer.name}` : ""}
-                    </div>
-                    <div className="text-2xl font-bold tabular-nums text-metal-warm-white" data-testid="mobile-order-total">
-                      £{total.toFixed(2)}
-                    </div>
-                  </div>
-                  <Button
-                    onClick={handleCheckout}
-                    size="lg"
-                    className="lm-btn-metal min-h-[52px] shrink-0 gap-2 px-5 text-base font-semibold"
-                    disabled={cart.length === 0 || submitting}
-                    data-testid="mobile-checkout-button"
-                  >
-                    {submitting ? (
-                      <>
-                        <ActionLoader className="text-primary-foreground" />
-                        Wait…
-                      </>
-                    ) : (
-                      "Continue to payment"
-                    )}
-                  </Button>
-                </div>
-              </div>
-            )}
+            <Button
+              type="button"
+              onClick={processPayment}
+              size="lg"
+              className="lm-btn-metal min-h-11 shrink-0 gap-2 px-5 text-base font-semibold"
+              disabled={cart.length === 0 || submitting}
+              data-testid="button-confirm-payment"
+            >
+              {submitting ? (
+                <>
+                  <ActionLoader className="text-primary-foreground" />
+                  Wait…
+                </>
+              ) : guardLines.length > 0 ? (
+                `Confirm and ${confirmVerb(paymentMethod)}`
+              ) : paymentMethod === "personal_use" ? (
+                "Log personal use"
+              ) : (
+                "Create order"
+              )}
+            </Button>
           </div>
-
-          {/* A wide enough form: customer, discounts and totals in a rail
-              beside the lines rather than under them. */}
-          {!narrow && (
-            <div className="pos-cart-rail flex w-full flex-col overflow-y-auto border-l border-metal-edge p-4 max-w-[38%] flex-1">
-              <PosCartPanel {...cartPanelProps} />
-            </div>
-          )}
-        </>
-      )}
+        </div>
+      </div>
     </div>
   );
 }

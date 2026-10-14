@@ -48,4 +48,6 @@ export const API_ROUTE_WORDS: ReadonlySet<string> = new Set([
   "order-audit",
   // ARC-BUG-18: organisation-wide cash-up exceptions.
   "unattached-refunds",
+  // arcarna 1.3: unfinished orders, and changing the customer on an open order.
+  "order-drafts", "customer",
 ]);

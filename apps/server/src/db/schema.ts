@@ -148,6 +148,9 @@ export const orders = pgTable('orders', {
   // The till's sale reference, unique per org — see shared/schema.ts and
   // migration 080. The unique index is declared there.
   client_order_id: varchar('client_order_id', { length: 64 }),
+  // Shop order number — see shared/schema.ts and migration 235. NULL on
+  // orders from before it.
+  order_number: integer('order_number'),
   // How the total was reached — see shared/schema.ts and migration 082.
   subtotal: numeric('subtotal',{precision:10,scale:2}),
   tier_discount: numeric('tier_discount',{precision:10,scale:2}),

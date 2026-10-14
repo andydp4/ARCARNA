@@ -4,7 +4,7 @@
 
 ### Product
 
-**ARCARNA EPOS** is a TypeScript monolith: Express API + React/Vite SPA (PWA) on port **5000**, mounted at **`/arcarna`** by default (`APP_BASE_PATH` / `VITE_BASE_PATH`). Legacy **`/midnight`** URLs 301 to `/arcarna`. A static owner portal is served at `/`. See `ARCHITECTURE.md` and `package.json` scripts.
+**ARCARNA EPOS** is a TypeScript monolith: Express API + React/Vite SPA (PWA) on port **5000**. Local dev mounts it at **`/arcarna`** (`APP_BASE_PATH` / `VITE_BASE_PATH`). Production is different: [https://arcarna.viger.cloud/](https://arcarna.viger.cloud/) at the **site root**. Health is `GET https://arcarna.viger.cloud/api/health`. Do not probe `viger.cloud/arcarna` or `viger.cloud/midnight` — those do not hit the API. Current snapshot: `docs/CURRENT_STATE.md`. See `ARCHITECTURE.md` and `package.json` scripts.
 
 ### Services (local dev)
 

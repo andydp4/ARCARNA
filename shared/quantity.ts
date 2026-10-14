@@ -72,6 +72,22 @@ export function parseQuantityInput(raw: string): number | null {
   return rounded;
 }
 
+/**
+ * What a quantity box is showing while someone is still typing.
+ * A valid number updates the line at once. An empty box is allowed mid-edit.
+ * Anything else is kept on screen and named as an error — the line is not
+ * deleted and the last good quantity is not silently put back.
+ */
+export function readQuantityDraft(
+  raw: string,
+): { ok: true; quantity: number } | { ok: false; empty: boolean } {
+  const trimmed = raw.trim();
+  if (!trimmed) return { ok: false, empty: true };
+  const quantity = parseQuantityInput(trimmed);
+  if (quantity == null) return { ok: false, empty: false };
+  return { ok: true, quantity };
+}
+
 /** Parses an optional count such as damaged quantity or a stock level set to 0. */
 export function parseNonNegativeQuantityInput(raw: string): number | null {
   const trimmed = raw.trim();

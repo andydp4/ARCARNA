@@ -23,10 +23,15 @@ server {
     root /var/www/viger.cloud;
     index index.html;
 
-    # Send the old path-based app URLs to the new subdomain (bookmarks).
-    location /arcarna/ { return 301 https://arcarna.viger.cloud$request_uri; }
+    # Old path-based URLs. Strip the prefix: the app on arcarna.viger.cloud
+    # is at the site root, so keeping /arcarna in the target 404s the API.
+    location /arcarna/ {
+        rewrite ^/arcarna/(.*)$ https://arcarna.viger.cloud/$1 permanent;
+    }
     location = /arcarna { return 301 https://arcarna.viger.cloud/; }
-    location /midnight/ { return 301 https://arcarna.viger.cloud/; }
+    location /midnight/ {
+        rewrite ^/midnight/(.*)$ https://arcarna.viger.cloud/$1 permanent;
+    }
     location = /midnight { return 301 https://arcarna.viger.cloud/; }
 
     # Static portal. try_files lets /files → files.html, /backups → backups.html.

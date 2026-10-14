@@ -17,7 +17,7 @@ Concept E (“Aurora”) in this folder describes the **spatial workspace** expr
 
 ## Base path
 
-Production app: `https://viger.cloud/arcarna` — all routes and assets must respect `VITE_BASE_PATH=/arcarna`. Legacy `/midnight` redirects with 301.
+Production app: `https://arcarna.viger.cloud/` at the site root (`VITE_BASE_PATH=/`). Local dev is still `http://localhost:5000/arcarna/`. See [`../CURRENT_STATE.md`](../CURRENT_STATE.md).
 
 ## Feature flags
 

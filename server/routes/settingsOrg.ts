@@ -9,6 +9,7 @@ import { recordAdminAudit } from "../adminAudit";
 import { orgSettingsForRole } from "@shared/staffPolicy";
 import { shopPrivacyFromOrg, shopPrivacyPatchSchema } from "@shared/shopPrivacy";
 import { deliveryFeeSettingsFrom } from "@shared/orders/deliveryFee";
+import { INVOICE_NUMBER_START } from "@shared/orders/orderNumber";
 import {
   insertLoyaltyTierSchema,
   insertPromotionSchema,
@@ -69,7 +70,7 @@ function mapOrgToSettings(org: Organization) {
     accentStyle: org.accentStyle || "arcarna",
     businessColors: org.businessColors || null,
     invoicePrefix: org.invoicePrefix || "INV",
-    invoiceStartNumber: org.invoiceStartNumber ?? 1000,
+    invoiceStartNumber: org.invoiceStartNumber ?? INVOICE_NUMBER_START,
     paymentTerms: org.paymentTerms || "Net 30",
     cashierCommissionEnabled: org.cashierCommissionEnabled ?? false,
     defaultCashierCommissionRate: Number.isFinite(commissionRate) ? commissionRate : 10,

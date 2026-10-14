@@ -8,6 +8,8 @@ This guide matches the **current VPS layout** (Node/PM2/Nginx). For **KVM2 → K
 
 For the private WM Supplies customer website domain, keep the domain at GoDaddy if preferred and point DNS to this VPS. See [WM_SUPPLIES_DOMAIN_DEPLOYMENT.md](./WM_SUPPLIES_DOMAIN_DEPLOYMENT.md).
 
+**WM Supplies redeploys with arcarna.** `scripts/deploy-production.sh` (and the GitHub "Deploy to production" action, which runs it) finishes by redeploying the WM Supplies website checkout at `/var/www/wm-supplies-app` at the same branch or commit, because both apps share one database. Override the path with `WM_SUPPLIES_DIR`, or skip it with `SKIP_WM_SUPPLIES=1`.
+
 ---
 
 ## Security warning
@@ -402,7 +404,7 @@ Production items that require VPS or external tooling (not app PRs):
 | Deploy: `cannot reach the database in DATABASE_URL` | The preflight could not connect before touching anything — the old build is still serving. Check Neon is up (or waking), then deploy again. |
 | Deploy: `migrations failed` … `could not reach the database after 4 attempts` | Each migration's connection is retried on a dropped handshake (psql exit 2); this means Neon stayed unreachable for over a minute with the app already stopped. Once Neon answers, `bash scripts/apply-migrations-pm2.sh && pm2 start ecosystem.config.cjs && pm2 save`, or re-run the deploy — every migration is idempotent. |
 | Sentry `57P01` / "terminating connection due to administrator command" | Expected when Neon compute suspends or restarts. Use **pooler** `DATABASE_URL` (`-pooler.neon.tech`); app retries transient errors. One-off is normal — disable Neon scale-to-zero for production or accept wake latency on first query after idle. |
-| Uptime monitor 404 | Use `GET https://arcarna.viger.cloud/api/health`. Old `viger.cloud/arcarna` + `/midnight` are redirected at nginx on the legacy domain (see cutover doc) — the app itself serves at root. |
+| Uptime monitor 404 | Use `GET https://arcarna.viger.cloud/api/health`. A redirect from `viger.cloud/arcarna/api/health` is not success: on 3 October 2026 it landed on `/arcarna/api/health` on the subdomain and 404’d. The example nginx config now strips that prefix; the live viger.cloud site still needs a reload before old monitors work. |
 | High Neon CU-hours / transfer on Free plan | Set `WORKER_DISPATCH_INTERVAL_MS=5000`, `WORKER_PROCESS_INTERVAL_MS=2000`, `WORKER_CONCURRENCY=1` in `.env`; use pooler `DATABASE_URL`; poll `/api/health` not `/api/health/metrics` every minute |
 
 For structured triage (health, PM2, nginx, auth loops, post-incident audit), use **[ops/INCIDENT_CHECKLIST.md](./ops/INCIDENT_CHECKLIST.md)**.

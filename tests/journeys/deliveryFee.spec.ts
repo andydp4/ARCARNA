@@ -230,7 +230,6 @@ test.describe("delivery fee on the order form, on a desktop", () => {
     const option = page.getByRole("option", { name: new RegExp(product.name) });
     await expect(option).toBeVisible({ timeout: 15_000 });
     await option.click();
-    await page.getByRole("button", { name: "Continue to payment" }).click();
     await expect(page.locator('[data-testid="pos-checkout-step"]')).toBeVisible();
 
     await page.getByTestId("select-fulfilment-delivery").click();

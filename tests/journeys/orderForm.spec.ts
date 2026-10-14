@@ -60,7 +60,7 @@ test.describe("order form on a phone", () => {
 
     await page.locator('[data-testid="mobile-checkout-button"]').tap();
 
-    // The payment step replaces the lines. It is page content, not a layer.
+    // Payment sits on the same form as the lines. It is page content, not a layer.
     const step = page.locator('[data-testid="pos-checkout-step"]');
     await expect(step).toBeVisible();
     await expect(dialogs).toHaveCount(0);
@@ -83,9 +83,9 @@ test.describe("order form on a phone", () => {
     const orderId = created.orderId ?? created.order?.id;
     expect(orderId, "the response must name the order").toBeTruthy();
 
-    // Back on an empty order form, still no dialogs.
+    // Back on an empty order form. Payment stays on the same screen.
     await expect(search).toBeVisible({ timeout: 15_000 });
-    await expect(page.locator('[data-testid="pos-checkout-step"]')).toHaveCount(0);
+    await expect(page.locator('[data-testid="pos-checkout-step"]')).toBeVisible();
     await expect(dialogs).toHaveCount(0);
 
     const stored = await okJson<{ paymentMethod: string; total: string }>(await api.get(`/api/orders/${orderId}`));

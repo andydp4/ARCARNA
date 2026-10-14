@@ -129,7 +129,7 @@ test.describe("order form on a phone, embedded in the Operations Centre", () => 
 
     // Back on an empty form, still no dialogs, still on the Order tab.
     await expect(search).toBeVisible({ timeout: 15_000 });
-    await expect(page.locator('[data-testid="pos-checkout-step"]')).toHaveCount(0);
+    await expect(page.locator('[data-testid="pos-checkout-step"]')).toBeVisible();
     await expect(dialogs, "no dialog once the form resets").toHaveCount(0);
     await expect(search, "focus returns to the product search").toBeFocused();
 

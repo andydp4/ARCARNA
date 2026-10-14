@@ -1,5 +1,7 @@
 # Wave 9 — Next work (8b + 9)
 
+**Historical.** Do not use the `viger.cloud/midnight` monitor URL in this file. Live health is `https://arcarna.viger.cloud/api/health`. See [`../CURRENT_STATE.md`](../CURRENT_STATE.md).
+
 **Prerequisite:** Wave 8 on `main` (**P10d** Playwright smoke, **P10b** Plausible, **U5** axe critical-path tests + `docs/ACCESSIBILITY.md`).
 
 **Canonical briefs:** [`PHASE_U_UX_POLISH.md`](./PHASE_U_UX_POLISH.md) (U6, U7, U5 eslint), [`PHASE_E_LIQUID_METAL.md`](./PHASE_E_LIQUID_METAL.md) (E2), [`PHASE_F_FEATURES.md`](./PHASE_F_FEATURES.md) (029/F6), [`PHASE_P10_PLATFORM.md`](./PHASE_P10_PLATFORM.md) (P10b), [`PHASE_O_OPS.md`](./PHASE_O_OPS.md) (O1–O3).

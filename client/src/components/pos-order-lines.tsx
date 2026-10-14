@@ -25,7 +25,7 @@ import { Minus, Plus, Search, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { formatQuantity, parseQuantityInput } from "@shared/quantity";
+import { formatQuantity, readQuantityDraft } from "@shared/quantity";
 import { posPrice, type PosProduct } from "@/components/pos-types";
 
 export interface OrderLine {
@@ -35,6 +35,8 @@ export interface OrderLine {
   subtotal: number;
   priceInput?: string;
   quantityInput?: string;
+  /** The box is showing something that is not a quantity. The line stays. */
+  quantityInvalid?: boolean;
 }
 
 export type PosOrderLinesProps = {
@@ -126,7 +128,10 @@ export function ProductSearch({
           placeholder="Add a product: code, name or barcode…"
           value={query}
           disabled={disabled}
-          className="min-h-[48px] border-metal-edge bg-metal-charcoal pl-10 pr-10 text-base text-metal-warm-white placeholder:text-metal-muted"
+          className={cn(
+            "min-h-11 pl-10 pr-10 text-base",
+            query.trim() ? "pos-field-filled" : "pos-field-empty",
+          )}
           data-testid={testId}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={(e) => {
@@ -238,13 +243,13 @@ export function PosOrderLines({
     const line = lines[index];
     const quantity = Math.round((line.quantity + delta) * 1000) / 1000;
     if (quantity <= 0) return remove(index);
-    update(index, { quantity, quantityInput: undefined });
+    update(index, { quantity, quantityInput: undefined, quantityInvalid: false });
   };
 
   const addProduct = (product: PosProduct) => {
     const existing = lines.findIndex((l) => l.product.id === product.id);
     if (existing >= 0) {
-      update(existing, { quantity: lines[existing].quantity + 1, quantityInput: undefined });
+      update(existing, { quantity: lines[existing].quantity + 1, quantityInput: undefined, quantityInvalid: false });
       return;
     }
     onChange([...lines, makeLine(product)]);
@@ -268,7 +273,7 @@ export function PosOrderLines({
               reads the FORM's own rendered width via the `@container` root in
               pos.tsx, not the browser viewport, so a 1194 px tablet with a
               ~460 px pane still gets the phone row layout below. */}
-          <div className="hidden gap-2 px-2 text-xs uppercase tracking-wide text-metal-muted @[640px]:grid @[640px]:grid-cols-[1fr_9.5rem_6.5rem_5.5rem_2.75rem]">
+          <div className="hidden gap-2 px-2 text-xs uppercase tracking-wide text-metal-muted @[640px]:grid @[640px]:grid-cols-[1fr_13rem_6.5rem_6.5rem_2.75rem]">
             <span>Product</span>
             <span className="text-center">Qty</span>
             <span className="text-right">Price</span>
@@ -284,12 +289,12 @@ export function PosOrderLines({
                 className="lm-card-muted rounded-lg p-2"
                 data-testid={`order-line-${line.product.id}`}
               >
-                <div className="grid grid-cols-[1fr_auto] items-center gap-x-2 gap-y-2 @[640px]:grid-cols-[1fr_9.5rem_6.5rem_5.5rem_2.75rem]">
+                <div className="grid grid-cols-[1fr_auto] items-center gap-x-2 gap-y-2 @[640px]:grid-cols-[1fr_13rem_6.5rem_6.5rem_2.75rem]">
                   <div className="min-w-0">
-                    <div className="truncate font-medium text-metal-warm-white" data-testid={`line-name-${index}`}>
+                    <div className="pos-product-name truncate text-lg font-medium" data-testid={`line-name-${index}`}>
                       {line.product.name}
                     </div>
-                    <div className="truncate font-mono text-xs text-metal-muted">{line.product.productId}</div>
+                    <div className="pos-product-code truncate font-mono text-sm">{line.product.productId}</div>
                   </div>
 
                   <Button
@@ -304,11 +309,11 @@ export function PosOrderLines({
                     <Trash2 className="h-4 w-4" />
                   </Button>
 
-                  <div className="flex items-center gap-1 rounded-md border border-metal-edge p-0.5">
+                  <div className="flex items-center gap-1">
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="h-10 w-10"
+                      className="pos-qty-step h-11 w-11"
                       aria-label={`One less ${line.product.name}`}
                       disabled={disabled}
                       onClick={() => step(index, -1)}
@@ -321,23 +326,42 @@ export function PosOrderLines({
                       // point, so a fractional quantity could not even be typed.
                       inputMode="decimal"
                       aria-label={`Quantity for ${line.product.name}`}
-                      className="h-10 w-12 border-0 bg-transparent px-0 text-center font-medium focus-visible:ring-0"
+                      aria-invalid={line.quantityInvalid || undefined}
+                      className={cn(
+                        "pos-qty-value h-11 w-16 border-0 px-1 text-center text-base font-semibold tabular-nums focus-visible:ring-2 focus-visible:ring-white",
+                        line.quantityInvalid && "ring-2 ring-destructive",
+                      )}
                       value={line.quantityInput ?? formatQuantity(line.quantity)}
                       data-testid={`line-qty-${index}`}
                       disabled={disabled}
-                      onChange={(e) => update(index, { quantityInput: e.target.value })}
+                      onFocus={(e) => e.currentTarget.select()}
+                      onChange={(e) => {
+                        const raw = e.target.value;
+                        const read = readQuantityDraft(raw);
+                        if (read.ok) {
+                          update(index, { quantity: read.quantity, quantityInput: raw, quantityInvalid: false });
+                        } else {
+                          update(index, { quantityInput: raw, quantityInvalid: !read.empty });
+                        }
+                      }}
                       onKeyDown={(e) => {
                         if (e.key === "Enter") (e.target as HTMLInputElement).blur();
                       }}
-                      onBlur={() => {
-                        const parsed = parseQuantityInput(line.quantityInput ?? "");
-                        update(index, { quantity: parsed ?? line.quantity, quantityInput: undefined });
+                      onBlur={(e) => {
+                        const raw = e.currentTarget.value;
+                        if (line.quantityInput === undefined && raw === formatQuantity(line.quantity)) return;
+                        const read = readQuantityDraft(raw);
+                        if (read.ok) {
+                          update(index, { quantity: read.quantity, quantityInput: undefined, quantityInvalid: false });
+                        } else {
+                          update(index, { quantityInput: raw, quantityInvalid: true });
+                        }
                       }}
                     />
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="h-10 w-10"
+                      className="pos-qty-step h-11 w-11"
                       aria-label={`One more ${line.product.name}`}
                       disabled={disabled}
                       onClick={() => step(index, 1)}
@@ -352,7 +376,7 @@ export function PosOrderLines({
                       type="text"
                       inputMode="decimal"
                       aria-label={`Price for ${line.product.name}`}
-                      className="h-10 w-20 @[640px]:w-full"
+                      className="pos-field-filled h-11 w-24 text-base @[640px]:w-full"
                       value={line.priceInput ?? line.customPrice.toFixed(2)}
                       data-testid={`line-price-${index}`}
                       disabled={disabled}
@@ -368,13 +392,19 @@ export function PosOrderLines({
                     />
                   </div>
 
-                  <span
-                    className="col-span-2 text-right text-base font-semibold tabular-nums text-metal-warm-white @[640px]:col-span-1"
+                    <span
+                    className="pos-line-total col-span-2 text-right text-[22px] font-semibold tabular-nums @[640px]:col-span-1"
                     data-testid={`line-total-${index}`}
                   >
                     £{line.subtotal.toFixed(2)}
                   </span>
                 </div>
+
+                {line.quantityInvalid && (
+                  <p className="mt-1 px-1 text-xs text-destructive" data-testid={`line-qty-error-${index}`}>
+                    Enter a quantity above zero. Use Remove to take the line off.
+                  </p>
+                )}
 
                 {showStockWarnings && overStock && (
                   <p className="mt-1 px-1 text-xs text-amber-500" data-testid={`line-warning-${index}`}>

@@ -89,7 +89,7 @@
     "csv-parse": "^7.0.2",
     "date-fns": "^3.6.0",
     "dotenv": "^16.6.1",
-    "drizzle-orm": "^0.45.2",
+    "drizzle-orm": "^0.45.4",
     "drizzle-zod": "^0.7.0",
     "embla-carousel-react": "^8.6.0",
     "exceljs": "^4.4.0",
