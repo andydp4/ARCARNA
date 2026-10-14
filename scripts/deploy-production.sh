@@ -243,4 +243,29 @@ else
   exit 1
 fi
 
+# WM Supplies runs this same codebase in customer-site mode from its own
+# checkout (wm-supplies-website, port 5001) against the SAME database. Left
+# behind, it ran a 23 Aug build against a schema five weeks newer. So every
+# arcarna deploy now redeploys it at the same branch/commit, after arcarna is
+# healthy (migrations have already been applied above, so it needs none).
+#
+# Skipped when the checkout is absent (dev boxes, other servers) or when
+# SKIP_WM_SUPPLIES=1. A WM Supplies failure leaves arcarna live and exits
+# non-zero so the operator (or the GitHub Action) sees it.
+WM_SUPPLIES_DIR="${WM_SUPPLIES_DIR:-/var/www/wm-supplies-app}"
+if [[ "${SKIP_WM_SUPPLIES:-0}" == "1" ]]; then
+  echo "=== WM Supplies website: skipped (SKIP_WM_SUPPLIES=1) ==="
+elif [[ -f "$WM_SUPPLIES_DIR/scripts/deploy-wm-supplies-website.sh" ]]; then
+  echo "=== WM Supplies website: deploying $BRANCH in $WM_SUPPLIES_DIR ==="
+  if ! DEPLOY_BRANCH="$BRANCH" bash "$WM_SUPPLIES_DIR/scripts/deploy-wm-supplies-website.sh"; then
+    echo ""
+    echo "ERROR: arcarna deployed and is healthy, but the WM Supplies website deploy failed."
+    echo "  arcarna is NOT affected. Fix the website, then re-run just that part:"
+    echo "    cd $WM_SUPPLIES_DIR && npm run deploy:wm-supplies"
+    exit 1
+  fi
+else
+  echo "=== WM Supplies website: no checkout at $WM_SUPPLIES_DIR, skipped ==="
+fi
+
 echo "SUCCESS: Deploy finished."
