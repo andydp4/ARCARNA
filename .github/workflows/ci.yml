@@ -372,6 +372,8 @@ jobs:
             server/__tests__/askArcarna.test.ts \
             server/__tests__/reconcileFigures.test.ts \
             server/__tests__/refundMoneyRules.test.ts \
+            server/__tests__/refundSoftShiftAttach.test.ts \
+            server/__tests__/refundCashReconciliation.test.ts \
             server/__tests__/orderDeleteClosedDay.test.ts \
             server/__tests__/figuresAddUp.test.ts \
             server/__tests__/invoiceRefunds.test.ts \

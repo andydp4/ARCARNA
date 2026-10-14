@@ -199,6 +199,23 @@ function rowsOf(result: unknown): Array<Record<string, unknown>> {
 }
 
 /**
+ * Soft refund attachment under the same drawer lock used by shift closing.
+ * A close that wins the lock leaves the refund unassigned for review; a
+ * refund that wins it must be committed before close computes expected cash.
+ * Never open a phantom shift or attach to the original sale's cashier.
+ */
+export async function drawerForRefundInTx(tx: SqlExecutor, orgId: string, userId: string): Promise<string | null> {
+  const open = rowsOf(await tx.execute(sql`
+    SELECT id FROM shifts
+    WHERE org_id = ${orgId} AND user_id = ${userId} AND status IN ('open', 'reopened')
+    ORDER BY opened_at DESC
+    LIMIT 1
+    FOR SHARE
+  `))[0];
+  return open?.id ? String(open.id) : null;
+}
+
+/**
  * The drawer a sale is stamped to, decided inside the sale's own transaction
  * (v1.2.1, E2E-01).
  *

@@ -46,6 +46,8 @@ export const API_ROUTE_WORDS: ReadonlySet<string> = new Set([
   "rota", "busy", "patterns", "overrides", "time-off", "decide",
   // Order Audit (v1.2.1): every stage, actor and money detail for one order.
   "order-audit",
+  // ARC-BUG-18: organisation-wide cash-up exceptions.
+  "unattached-refunds",
   // arcarna 1.3: unfinished orders, and changing the customer on an open order.
   "order-drafts", "customer",
 ]);

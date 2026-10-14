@@ -21,6 +21,7 @@ import { resolveUserName, resolveUserNames } from "../services/userDisplayName";
 import type { ZReportOrder, ZReportRefund } from "@shared/reports/zReport";
 import { maySeeShiftSheet } from "@shared/staffPolicy";
 import { loadStaffRoles } from "../services/staffRoles";
+import { loadUnattachedCashRefundList, loadUnattachedCashRefundSummary } from "../services/unattachedCashRefunds";
 
 /** Default window for the shifts list, and the ceiling a caller may ask for. */
 const DEFAULT_WINDOW_HOURS = 48;
@@ -117,7 +118,7 @@ async function loadShiftReportData(shiftId: string, orgId: string, client: Shift
   const shiftRefunds = await client
     .select()
     .from(refunds)
-    .where(eq(refunds.shiftId, shiftId));
+    .where(and(eq(refunds.shiftId, shiftId), eq(refunds.orgId, orgId)));
 
   const zRefunds: ZReportRefund[] = shiftRefunds.map((r) => ({
     id: r.id,
@@ -199,10 +200,23 @@ async function loadShiftReportData(shiftId: string, orgId: string, client: Shift
     })),
   );
 
+  // Separate organisation-wide exception, never deducted from an arbitrary
+  // drawer. Includes historical unlinked refunds even outside this shift.
+  report.unattachedCashRefunds = await loadUnattachedCashRefundSummary(orgId, client);
   return { shift, report };
 }
 
 export function registerShiftRoutes(app: Express, scoped: RequestHandler[]): void {
+  app.get("/api/shifts/unattached-refunds", ...scoped, requireRole("SUPER_ADMIN", "ADMIN", "MANAGER"), async (req: any, res) => {
+    try {
+      const offset = z.coerce.number().int().min(0).max(Number.MAX_SAFE_INTEGER).parse(req.query.offset ?? 0);
+      res.json(await loadUnattachedCashRefundList(req.orgContext.orgId, offset));
+    } catch (error) {
+      if (error instanceof z.ZodError) return res.status(400).json({ message: "Invalid refund list offset" });
+      console.error("[Shifts] unattached refunds:", error);
+      res.status(500).json({ message: "Failed to load cash refunds needing reconciliation" });
+    }
+  });
   app.get("/api/shifts/current", ...scoped, async (req: any, res) => {
     try {
       const ctx = req.orgContext as { orgId: string; locationId: string | null };
