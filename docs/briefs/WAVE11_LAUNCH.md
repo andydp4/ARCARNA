@@ -1,6 +1,6 @@
 # Wave 11 — Launch & testing readiness
 
-**Status:** **Complete** — deployed + QA signed off. See [`WAVE12_LAUNCH.md`](./WAVE12_LAUNCH.md) for current production state.
+**Status:** **Complete** — deployed + QA signed off in June 2026. Current production is [`../CURRENT_STATE.md`](../CURRENT_STATE.md), not this file. Health curls below that use `viger.cloud/midnight` do not hit the API today.
 
 **Prerequisite:** Wave 10 on `main` (Clerk #30–#31, PWA SW, WhatsApp 033–035, logo, ops docs).
 

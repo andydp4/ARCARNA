@@ -1,6 +1,8 @@
 # VPS migration: Hostinger KVM2 → KVM4 (ARCARNA)
 
-**Status:** Phase R merged — repo ready. **Next:** Phase 0 inventory on KVM2, then build KVM4 (`72.60.23.130` / `Live.Viger.Cloud`).
+**Status:** Historical runbook. Production on 3 October 2026 is already `https://arcarna.viger.cloud/` at the site root, not `viger.cloud/arcarna`. Do not deploy from the URL column in this file. Current snapshot: [`../CURRENT_STATE.md`](../CURRENT_STATE.md).
+
+**Was:** Phase R merged — repo ready. **Next at the time of writing:** Phase 0 inventory on KVM2, then build KVM4 (`72.60.23.130` / `Live.Viger.Cloud`).
 
 **Related:** [DEPLOY_HOSTINGER_VPS.md](../DEPLOY_HOSTINGER_VPS.md) · [REBRAND_ARCARNA.md](../REBRAND_ARCARNA.md) · [ops/CLOUDFLARE.md](./CLOUDFLARE.md) · [ops/OPERATOR_CHECKLIST.md](./OPERATOR_CHECKLIST.md) · [DISASTER_RECOVERY.md](../DISASTER_RECOVERY.md) · [SECRET_ROTATION_RUNBOOK.md](../SECRET_ROTATION_RUNBOOK.md)
 

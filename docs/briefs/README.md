@@ -1,8 +1,8 @@
 # Execution Briefs — Post-Stabilise
 
-**Start here:** [`MASTER_EXECUTION_PLAN.md`](./MASTER_EXECUTION_PLAN.md) · **Status:** [`BRIEF_STATUS.md`](./BRIEF_STATUS.md) · **Gaps:** [`GAPS_BACKLOG.md`](./GAPS_BACKLOG.md) · **Deploy + QA:** [`WAVE12_LAUNCH.md`](./WAVE12_LAUNCH.md) · **Next work:** [`WAVE13_NEXT.md`](./WAVE13_NEXT.md)
+**Current production is not this queue.** Read [`../CURRENT_STATE.md`](../CURRENT_STATE.md) first. These briefs are the May–September 2026 execution record. Wave 13 is not the next job. Health checks inside the wave files still name `viger.cloud/midnight` and `viger.cloud/arcarna`; the live health URL is `https://arcarna.viger.cloud/api/health`.
 
-Waves **0–12** on `main` (`a37e9ae` — PRs #31–#39). Production on **VPS1** `/root/ARCARNA`. Wave **13** = import empty states, `lint:strict`, ops drills (O2/O3).
+**Status tracker (historical after June, except Phase N):** [`BRIEF_STATUS.md`](./BRIEF_STATUS.md) · **Gaps:** [`GAPS_BACKLOG.md`](./GAPS_BACKLOG.md) · **v1.2 staff notes:** [`../RELEASE_NOTES_1.2.md`](../RELEASE_NOTES_1.2.md)
 
 This directory contains full execution briefs for everything that ships **after** the Stabilise (S1–S8) and Channel Readiness (C1–C5) phases land. Each brief is self-contained so any agent (any model) can pick one up, execute it, open a PR, and stop.
 
