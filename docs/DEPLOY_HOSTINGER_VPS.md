@@ -8,6 +8,8 @@ This guide matches the **current VPS layout** (Node/PM2/Nginx). For **KVM2 → K
 
 For the private WM Supplies customer website domain, keep the domain at GoDaddy if preferred and point DNS to this VPS. See [WM_SUPPLIES_DOMAIN_DEPLOYMENT.md](./WM_SUPPLIES_DOMAIN_DEPLOYMENT.md).
 
+**WM Supplies redeploys with arcarna.** `scripts/deploy-production.sh` (and the GitHub "Deploy to production" action, which runs it) finishes by redeploying the WM Supplies website checkout at `/var/www/wm-supplies-app` at the same branch or commit, because both apps share one database. Override the path with `WM_SUPPLIES_DIR`, or skip it with `SKIP_WM_SUPPLIES=1`.
+
 ---
 
 ## Security warning

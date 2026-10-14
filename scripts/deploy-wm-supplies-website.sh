@@ -36,8 +36,11 @@ git fetch origin "$BRANCH"
 git checkout -B "$BRANCH" FETCH_HEAD
 echo "On commit: $(git log -1 --oneline)"
 
-echo "=== npm install (including build tools) ==="
-npm install --include=dev
+# npm ci, not npm install: install can rewrite package-lock.json, which leaves
+# the checkout dirty and makes the NEXT deploy refuse to run (see the
+# uncommitted-changes guard above). Same lockfile-exact install as arcarna.
+echo "=== npm ci (lockfile-exact, including build tools) ==="
+npm ci --include=dev
 
 echo "=== build for wmsupplies.co.uk ==="
 set -a
